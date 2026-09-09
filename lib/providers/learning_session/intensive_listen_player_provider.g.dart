@@ -7,7 +7,7 @@ part of 'intensive_listen_player_provider.dart';
 // **************************************************************************
 
 String _$intensiveListenPlayerHash() =>
-    r'60aef8c12a0d931127acb0dec751f9c012375eb8';
+    r'a52aa50dcca7fb03f200942e3aca7c26042d96fd';
 
 /// See also [IntensiveListenPlayer].
 @ProviderFor(IntensiveListenPlayer)

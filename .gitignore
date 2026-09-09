@@ -58,3 +58,6 @@ METHOD.md
 
 # Test artifacts
 test-results.json
+
+# FVM Version Cache
+.fvm/

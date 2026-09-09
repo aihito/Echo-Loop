@@ -9,7 +9,12 @@
   "emmet.showExpandedAbbreviation": "never",
   "prettier.enable": false,
   "todo-tree.highlights.enabled": true,
-  "todo-tree.general.tags": ["TODO", "FIXME", "BUG", "NOTE"],
+  "todo-tree.general.tags": [
+    "TODO",
+    "FIXME",
+    "BUG",
+    "NOTE"
+  ],
   "todo-tree.highlights.customHighlight": {
     "TODO": {
       "type": "tag",
@@ -51,5 +56,6 @@
       "rulerColour": "#4589ff",
       "rulerLane": "center"
     }
-  }
+  },
+  "dart.flutterSdkPath": ".fvm/versions/3.41.5"
 }

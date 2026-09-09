@@ -6,7 +6,7 @@ part of 'community_download_notifier.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$communityDownloadHash() => r'd28c39e180ae6467f718340ed4aeada5e220fecc';
+String _$communityDownloadHash() => r'f88cc60f7d8869e3ae455880eff7799265955381';
 
 /// 社区合集媒体和字幕下载调度器；同一时刻只运行一个任务。
 ///
