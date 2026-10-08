@@ -41,16 +41,16 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        // 只打包 arm64
+        // 本机仅用 x86_64 模拟器调试；真机 arm64 发版前改回 arm64-v8a。
         ndk {
-            abiFilters += "arm64-v8a"
+            abiFilters += "x86_64"
         }
     }
 
     packaging {
         jniLibs {
-            // 强制排除非 arm64 的 so，防止 Flutter 插件绕过 abiFilters
-            excludes += listOf("lib/x86_64/**", "lib/armeabi-v7a/**", "lib/x86/**")
+            // 强制排除非 x86_64 的 so，防止插件绕过 abiFilters
+            excludes += listOf("lib/arm64-v8a/**", "lib/armeabi-v7a/**", "lib/x86/**")
         }
     }
 
