@@ -16,6 +16,70 @@ void main() {
     publishedAt: DateTime(2026, 1, 1),
   );
 
+  testWidgets('发现资源卡片显示上传者而不显示描述', (tester) async {
+    final item = PublicCollectionCatalogEntry(
+      id: 'collection-2',
+      name: 'VOA Learning English',
+      description: 'Audio from VOA Learning English Level 1',
+      coverUrl: null,
+      authorNickname: '  VOA Learning English  ',
+      fileCount: 52,
+      publishedAt: DateTime(2026, 1, 1),
+    );
+
+    await _pumpCard(tester, item, locale: const Locale('zh'));
+
+    expect(find.text('上传者：VOA Learning English'), findsOneWidget);
+    expect(find.text('Audio from VOA Learning English Level 1'), findsNothing);
+  });
+
+  testWidgets('英文发现资源卡片使用英文上传者文案', (tester) async {
+    final item = PublicCollectionCatalogEntry(
+      id: 'collection-3',
+      name: 'VOA Learning English',
+      description: 'Audio from VOA Learning English Level 1',
+      coverUrl: null,
+      authorNickname: 'Voice of America',
+      fileCount: 52,
+      publishedAt: DateTime(2026, 1, 1),
+    );
+
+    await _pumpCard(tester, item, locale: const Locale('en'));
+
+    expect(find.text('Uploaded by Voice of America'), findsOneWidget);
+    expect(find.text('Audio from VOA Learning English Level 1'), findsNothing);
+  });
+
+  testWidgets('缺失或空白上传者显示未知上传者', (tester) async {
+    final missingUploaderItem = PublicCollectionCatalogEntry(
+      id: 'collection-4',
+      name: 'Shared collection',
+      description: null,
+      coverUrl: null,
+      authorNickname: null,
+      fileCount: 1,
+      publishedAt: DateTime(2026, 1, 1),
+    );
+
+    await _pumpCard(tester, missingUploaderItem, locale: const Locale('zh'));
+
+    expect(find.text('未知上传者'), findsOneWidget);
+
+    final blankUploaderItem = PublicCollectionCatalogEntry(
+      id: 'collection-5',
+      name: 'Shared collection',
+      description: null,
+      coverUrl: null,
+      authorNickname: '  ',
+      fileCount: 1,
+      publishedAt: DateTime(2026, 1, 1),
+    );
+
+    await _pumpCard(tester, blankUploaderItem, locale: const Locale('zh'));
+
+    expect(find.text('未知上传者'), findsOneWidget);
+  });
+
   testWidgets('已加入状态显示不可点击的绿色圆形对勾，且详情仍可打开', (tester) async {
     var detailTapCount = 0;
 
@@ -179,4 +243,26 @@ void main() {
     );
     expect(find.text('Start Practicing'), findsNothing);
   });
+}
+
+Future<void> _pumpCard(
+  WidgetTester tester,
+  PublicCollectionCatalogEntry item, {
+  required Locale locale,
+}) async {
+  await tester.pumpWidget(
+    createTestApp(
+      Scaffold(
+        body: CommunityCollectionCard(
+          item: item,
+          enrolled: false,
+          enrolling: false,
+          onOpenDetail: () {},
+          onEnroll: () {},
+        ),
+      ),
+      locale: locale,
+    ),
+  );
+  await tester.pumpAndSettle();
 }

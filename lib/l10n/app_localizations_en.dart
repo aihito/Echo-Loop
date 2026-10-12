@@ -887,6 +887,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get communityCollectionUnknownAuthor => 'Unknown author';
 
   @override
+  String communityCollectionUploader(String nickname) {
+    return 'Uploaded by $nickname';
+  }
+
+  @override
+  String get communityCollectionUnknownUploader => 'Unknown uploader';
+
+  @override
   String get communityCollectionUnknownPublishDate => 'Date unknown';
 
   @override

@@ -374,6 +374,13 @@
     }
   },
   "communityCollectionUnknownAuthor": "未知作者",
+  "communityCollectionUploader": "上传者：{nickname}",
+  "@communityCollectionUploader": {
+    "placeholders": {
+      "nickname": {"type": "String"}
+    }
+  },
+  "communityCollectionUnknownUploader": "未知上传者",
   "communityCollectionUnknownPublishDate": "日期未知",
   "communityCollectionCover": "{name}封面",
   "@communityCollectionCover": {

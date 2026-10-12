@@ -861,6 +861,14 @@ class AppLocalizationsZh extends AppLocalizations {
   String get communityCollectionUnknownAuthor => '未知作者';
 
   @override
+  String communityCollectionUploader(String nickname) {
+    return '上传者：$nickname';
+  }
+
+  @override
+  String get communityCollectionUnknownUploader => '未知上传者';
+
+  @override
   String get communityCollectionUnknownPublishDate => '日期未知';
 
   @override

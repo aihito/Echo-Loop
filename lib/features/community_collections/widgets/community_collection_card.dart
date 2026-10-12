@@ -39,6 +39,10 @@ class CommunityCollectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context)!;
+    final authorNickname = item.authorNickname?.trim();
+    final uploader = authorNickname == null || authorNickname.isEmpty
+        ? l10n.communityCollectionUnknownUploader
+        : l10n.communityCollectionUploader(authorNickname);
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
@@ -76,18 +80,15 @@ class CommunityCollectionCard extends StatelessWidget {
                                 color: theme.colorScheme.onSurfaceVariant,
                               ),
                             ),
-                            if (item.description case final description?
-                                when description.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                description,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                            const SizedBox(height: 4),
+                            Text(
+                              uploader,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
                               ),
-                            ],
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ],
                         ),
                       ),

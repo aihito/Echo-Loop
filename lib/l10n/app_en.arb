@@ -450,6 +450,13 @@
     }
   },
   "communityCollectionUnknownAuthor": "Unknown author",
+  "communityCollectionUploader": "Uploaded by {nickname}",
+  "@communityCollectionUploader": {
+    "placeholders": {
+      "nickname": {"type": "String"}
+    }
+  },
+  "communityCollectionUnknownUploader": "Unknown uploader",
   "communityCollectionUnknownPublishDate": "Date unknown",
   "communityCollectionCover": "{name} cover",
   "@communityCollectionCover": {

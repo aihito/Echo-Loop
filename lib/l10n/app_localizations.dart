@@ -1664,6 +1664,18 @@ abstract class AppLocalizations {
   /// **'Unknown author'**
   String get communityCollectionUnknownAuthor;
 
+  /// No description provided for @communityCollectionUploader.
+  ///
+  /// In en, this message translates to:
+  /// **'Uploaded by {nickname}'**
+  String communityCollectionUploader(String nickname);
+
+  /// No description provided for @communityCollectionUnknownUploader.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown uploader'**
+  String get communityCollectionUnknownUploader;
+
   /// No description provided for @communityCollectionUnknownPublishDate.
   ///
   /// In en, this message translates to:
