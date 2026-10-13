@@ -27,6 +27,7 @@ import '../database/app_database.dart';
 import '../database/providers.dart';
 import '../features/onboarding_survey/providers/onboarding_survey_provider.dart'
     show sharedPreferencesProvider;
+import '../features/user_region/user_region_providers.dart';
 import '../features/community_collections/download/community_download_notifier.dart';
 import '../firebase_options.dart';
 import '../services/app_logger.dart';
@@ -87,13 +88,13 @@ final startupBootstrapperProvider = Provider<StartupBootstrapper>((ref) {
     prefs: ref.read(sharedPreferencesProvider),
     isDemoMode: ref.read(startupDemoModeProvider),
     analyticsService: ref.read(analyticsServiceProvider),
-    supabaseUrl: ref.read(supabaseUrlForThisRunProvider),
   );
 });
 
-/// 冷启动时按地区判定选择一次 Supabase URL，并在本进程内保持不变。
-final supabaseUrlForThisRunProvider = Provider<String?>((_) {
-  final isChinaUser = runtimeEndpointRouter.isChinaUser;
+/// 等待本次启动的地区结论后，按该结果选择 Supabase URL。
+final supabaseUrlForThisRunProvider = FutureProvider<String?>((ref) async {
+  final userRegion = await ref.watch(userRegionBootstrapProvider.future);
+  final isChinaUser = userRegion.isChinaUser;
   final selectedUrl = auth_config.supabaseUrlForRegion(
     isChinaUser: isChinaUser,
   );
@@ -127,8 +128,14 @@ final localStartupProvider =
 final thirdPartyStartupProvider = FutureProvider<ThirdPartyStartupReport>((
   ref,
 ) async {
-  await ref.watch(localStartupProvider.future);
-  return ref.read(startupBootstrapperProvider).initializeThirdParty();
+  final localStartup = ref.watch(localStartupProvider.future);
+  final userRegionBootstrap = ref.watch(userRegionBootstrapProvider.future);
+  final supabaseUrlFuture = ref.watch(supabaseUrlForThisRunProvider.future);
+  await Future.wait([localStartup, userRegionBootstrap]);
+  final supabaseUrl = await supabaseUrlFuture;
+  return ref
+      .read(startupBootstrapperProvider)
+      .initializeThirdParty(supabaseUrl: supabaseUrl);
 });
 
 class LocalStartupController extends AsyncNotifier<StartupReport> {
@@ -175,7 +182,9 @@ class LocalStartupController extends AsyncNotifier<StartupReport> {
 abstract class StartupBootstrapper {
   Future<StartupReport> initializeLocal();
 
-  Future<ThirdPartyStartupReport> initializeThirdParty();
+  Future<ThirdPartyStartupReport> initializeThirdParty({
+    required String? supabaseUrl,
+  });
 }
 
 /// 生产启动副作用编排器。关键本地步骤抛错，可降级步骤收集为报告。
@@ -185,18 +194,15 @@ class DefaultStartupBootstrapper implements StartupBootstrapper {
     required SharedPreferences prefs,
     required bool isDemoMode,
     required AnalyticsService analyticsService,
-    required String? supabaseUrl,
   }) : _database = database,
        _prefs = prefs,
        _isDemoMode = isDemoMode,
-       _analyticsService = analyticsService,
-       _supabaseUrl = supabaseUrl;
+       _analyticsService = analyticsService;
 
   final AppDatabase _database;
   final SharedPreferences _prefs;
   final bool _isDemoMode;
   final AnalyticsService _analyticsService;
-  final String? _supabaseUrl;
 
   /// 执行本地数据初始化；失败会向上抛出，由首页以降级状态承接。
   @override
@@ -226,7 +232,9 @@ class DefaultStartupBootstrapper implements StartupBootstrapper {
 
   /// 执行不会阻断本地学习的 SDK 与维护任务，并保证正常结束。
   @override
-  Future<ThirdPartyStartupReport> initializeThirdParty() async {
+  Future<ThirdPartyStartupReport> initializeThirdParty({
+    required String? supabaseUrl,
+  }) async {
     final issues = <StartupIssue>[];
     await _runBestEffort(
       issues,
@@ -266,7 +274,7 @@ class DefaultStartupBootstrapper implements StartupBootstrapper {
 
     var supabaseReady = false;
     String? restoredUserId;
-    final selectedSupabaseUrl = _supabaseUrl;
+    final selectedSupabaseUrl = supabaseUrl;
     final supabaseEndpointLabel = auth_config.supabaseEndpointLabelForLog(
       selectedSupabaseUrl,
     );

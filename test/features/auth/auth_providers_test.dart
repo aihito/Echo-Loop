@@ -5,11 +5,15 @@
 /// 验证 fallback 分支不崩、行为合理，避免后续步骤回归。
 library;
 
+import 'dart:async';
+
 import 'package:echo_loop/analytics/analytics_providers.dart';
 import 'package:echo_loop/analytics/analytics_service.dart';
 import 'package:echo_loop/features/auth/apple_sign_in_credentials.dart';
 import 'package:echo_loop/features/auth/google_sign_in_credentials.dart';
 import 'package:echo_loop/features/auth/providers/auth_providers.dart';
+import 'package:echo_loop/features/auth/supabase_startup_gate.dart';
+import 'package:echo_loop/providers/startup_bootstrap_provider.dart';
 import 'package:echo_loop/services/user_id_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -68,7 +72,11 @@ void main() {
 
   group('supabaseSessionProvider（Supabase 未配置 fallback 分支）', () {
     test('首值 emit null（匿名态）', () async {
-      final container = ProviderContainer();
+      final container = ProviderContainer(
+        overrides: [
+          supabaseAuthConfiguredProvider.overrideWith((ref) async => false),
+        ],
+      );
       addTearDown(container.dispose);
 
       await container.read(supabaseSessionProvider.future);
@@ -77,23 +85,82 @@ void main() {
       expect(value, isNull);
     });
 
-    test('Stream 完成且不抛错', () async {
-      final container = ProviderContainer();
+    test('Supabase 配置解析失败时回退为匿名 Session', () async {
+      final container = ProviderContainer(
+        overrides: [
+          supabaseAuthConfiguredProvider.overrideWith(
+            (ref) async => throw StateError('region resolution failed'),
+          ),
+        ],
+      );
       addTearDown(container.dispose);
 
-      final future = container.read(supabaseSessionProvider.future);
-      expect(await future, isNull);
+      expect(await container.read(supabaseSessionProvider.future), isNull);
     });
   });
 
   group('isAuthenticatedProvider', () {
     test('未配置时为 false', () async {
-      final container = ProviderContainer();
+      final container = _unconfiguredSupabaseContainer();
       addTearDown(container.dispose);
 
       await container.read(supabaseSessionProvider.future);
 
       expect(container.read(isAuthenticatedProvider), isFalse);
+    });
+
+    test('地区配置尚未解析时 .future 保持 pending，解析后发出匿名值', () async {
+      final configGate = Completer<bool>();
+      final container = ProviderContainer(
+        overrides: [
+          supabaseAuthConfiguredProvider.overrideWith(
+            (ref) => configGate.future,
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final sessionFuture = container.read(supabaseSessionProvider.future);
+
+      expect(container.read(supabaseSessionProvider).isLoading, isTrue);
+
+      configGate.complete(false);
+      expect(await sessionFuture, isNull);
+
+      expect(container.read(supabaseSessionProvider).hasValue, isTrue);
+      expect(container.read(supabaseSessionProvider).valueOrNull, isNull);
+    });
+
+    test('第三方启动失败时回退为匿名 Session', () async {
+      final container = ProviderContainer(
+        overrides: [
+          supabaseAuthConfiguredProvider.overrideWith((ref) async => true),
+          thirdPartyStartupProvider.overrideWith(
+            (ref) async => throw StateError('Supabase initialization failed'),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      expect(await container.read(supabaseSessionProvider.future), isNull);
+    });
+
+    test('Supabase SDK 未就绪时回退为匿名 Session', () async {
+      final container = ProviderContainer(
+        overrides: [
+          supabaseAuthConfiguredProvider.overrideWith((ref) async => true),
+          thirdPartyStartupProvider.overrideWith(
+            (ref) async => const ThirdPartyStartupReport(
+              issues: [],
+              isSupabaseReady: false,
+              isRevenueCatReady: false,
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      expect(await container.read(supabaseSessionProvider.future), isNull);
     });
   });
 
@@ -860,4 +927,12 @@ void main() {
       verifyNever(() => analytics.setUserId(null));
     });
   });
+}
+
+ProviderContainer _unconfiguredSupabaseContainer() {
+  return ProviderContainer(
+    overrides: [
+      supabaseAuthConfiguredProvider.overrideWith((ref) async => false),
+    ],
+  );
 }

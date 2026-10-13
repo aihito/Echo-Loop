@@ -23,7 +23,10 @@ class _NoRefreshRemoteConfigController extends RemoteConfigController {
       );
 
   @override
-  void startPeriodicRefresh({bool forceFirst = false}) {}
+  void startPeriodicRefresh({
+    bool forceFirst = false,
+    bool skipInitialRequest = false,
+  }) {}
 
   @override
   Future<void> refreshIfStale({bool force = false}) async {}

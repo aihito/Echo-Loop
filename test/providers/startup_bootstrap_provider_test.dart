@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:echo_loop/providers/startup_bootstrap_provider.dart';
+import 'package:echo_loop/features/remote_config/remote_config.dart';
+import 'package:echo_loop/features/user_region/user_region_bootstrapper.dart';
+import 'package:echo_loop/features/user_region/user_region_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -66,6 +69,30 @@ void main() {
     expect(find.text('third-ready'), findsOneWidget);
   });
 
+  testWidgets('第三方与 Supabase 初始化等待地区决策完成', (tester) async {
+    final regionGate = Completer<UserRegionBootstrapResult>();
+    final bootstrapper = _FakeBootstrapper();
+
+    await tester.pumpWidget(
+      _host(
+        bootstrapper: bootstrapper,
+        watchThirdParty: true,
+        regionGate: regionGate,
+      ),
+    );
+    await tester.pump();
+    expect(bootstrapper.localCalls, 1);
+    expect(bootstrapper.thirdPartyCalls, 0);
+
+    regionGate.complete(_chinaResolvedRegion);
+    await tester.pump();
+    await tester.pump();
+
+    expect(bootstrapper.thirdPartyCalls, 1);
+    expect(bootstrapper.supabaseUrls, ['https://china.supabase.test']);
+    expect(find.text('third-ready'), findsOneWidget);
+  });
+
   testWidgets('第三方报告只发布 bootstrapper 确认的 RevenueCat ready 状态', (tester) async {
     final bootstrapper = _FakeBootstrapper(revenueCatReady: true);
 
@@ -82,9 +109,20 @@ void main() {
 Widget _host({
   required StartupBootstrapper bootstrapper,
   bool watchThirdParty = false,
+  Completer<UserRegionBootstrapResult>? regionGate,
 }) {
+  final regionFuture = regionGate?.future ?? Future.value(_resolvedRegion);
   return ProviderScope(
-    overrides: [startupBootstrapperProvider.overrideWithValue(bootstrapper)],
+    overrides: [
+      startupBootstrapperProvider.overrideWithValue(bootstrapper),
+      userRegionBootstrapProvider.overrideWith((ref) => regionFuture),
+      supabaseUrlForThisRunProvider.overrideWith((ref) async {
+        final userRegion = await ref.watch(userRegionBootstrapProvider.future);
+        return userRegion.isChinaUser
+            ? 'https://china.supabase.test'
+            : 'https://global.supabase.test';
+      }),
+    ],
     child: MaterialApp(
       home: Consumer(
         builder: (context, ref, _) {
@@ -112,6 +150,18 @@ Widget _host({
   );
 }
 
+const _resolvedRegion = UserRegionBootstrapResult(
+  isChinaUser: false,
+  source: UserRegionDecisionSource.remoteConfig,
+  remoteConfig: RemoteConfig.defaults,
+);
+
+const _chinaResolvedRegion = UserRegionBootstrapResult(
+  isChinaUser: true,
+  source: UserRegionDecisionSource.remoteConfig,
+  remoteConfig: RemoteConfig.defaults,
+);
+
 class _FakeBootstrapper implements StartupBootstrapper {
   _FakeBootstrapper({
     this.failLocalAttempts = 0,
@@ -124,6 +174,7 @@ class _FakeBootstrapper implements StartupBootstrapper {
   final bool revenueCatReady;
   int localCalls = 0;
   int thirdPartyCalls = 0;
+  final supabaseUrls = <String?>[];
 
   @override
   Future<StartupReport> initializeLocal() async {
@@ -135,8 +186,11 @@ class _FakeBootstrapper implements StartupBootstrapper {
   }
 
   @override
-  Future<ThirdPartyStartupReport> initializeThirdParty() async {
+  Future<ThirdPartyStartupReport> initializeThirdParty({
+    required String? supabaseUrl,
+  }) async {
     thirdPartyCalls += 1;
+    supabaseUrls.add(supabaseUrl);
     return ThirdPartyStartupReport(
       issues: [],
       isSupabaseReady: false,

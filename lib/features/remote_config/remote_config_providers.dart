@@ -9,28 +9,16 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../providers/package_info_provider.dart';
 import '../../services/app_logger.dart';
 import '../../services/refresh_coordinator.dart';
-import '../../services/runtime_endpoint_router.dart';
-import '../onboarding_survey/providers/onboarding_survey_provider.dart'
-    show sharedPreferencesProvider;
 import 'remote_config.dart';
+import 'remote_config_dependencies.dart';
 import 'remote_config_service.dart';
 
+export 'remote_config_dependencies.dart'
+    show initialRemoteConfigProvider, remoteConfigServiceProvider;
+
 const _remoteConfigRetryDelay = Duration(minutes: 5);
-
-final initialRemoteConfigProvider = Provider<RemoteConfig>(
-  (ref) => RemoteConfig.defaults,
-);
-
-final remoteConfigServiceProvider = Provider<RemoteConfigService>((ref) {
-  return RemoteConfigService.create(
-    prefs: ref.watch(sharedPreferencesProvider),
-    appVersion: readAppVersion(ref),
-    endpointRouter: runtimeEndpointRouter,
-  );
-});
 
 final remoteConfigProvider =
     StateNotifierProvider<RemoteConfigController, RemoteConfig>((ref) {
@@ -81,9 +69,21 @@ class RemoteConfigController extends StateNotifier<RemoteConfig> {
   ///
   /// [forceFirst] 仅用于冷启动后首轮后台刷新，确保网络环境切换（例如 VPN
   /// 地区变化）不会被旧缓存 TTL 长时间挡住；普通回前台仍走 TTL 节流。
-  void startPeriodicRefresh({bool forceFirst = false}) {
+  void startPeriodicRefresh({
+    bool forceFirst = false,
+    bool skipInitialRequest = false,
+  }) {
     _active = true;
+    if (skipInitialRequest) {
+      _scheduleNextRefresh();
+      return;
+    }
     unawaited(refreshIfStale(force: forceFirst));
+  }
+
+  /// 使用启动阶段已获取的配置，避免首帧后重复请求同一配置 API。
+  void adoptStartupConfig(RemoteConfig config) {
+    state = config;
   }
 
   /// App 进入后台或 controller 销毁时停止前台刷新循环。

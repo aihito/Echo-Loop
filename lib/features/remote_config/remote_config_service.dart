@@ -3,6 +3,8 @@
 /// 先读未过期缓存，过期后请求后端；请求失败时使用过期缓存，最后才回退本地默认。
 library;
 
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -116,8 +118,47 @@ class RemoteConfigService {
       '/api/v1/client/config',
       queryParameters: {'platform': clientPlatformName()},
     );
-    final config = RemoteConfig.fromRemoteJson(response.data);
-    await _store.write(config, now: _now());
+    return _storeFetchedConfig(response.data);
+  }
+
+  /// 从启动期指定的地址拉取配置，并对整次请求施加可取消的时间上限。
+  ///
+  /// 显式使用完整 URL，避免地区尚未确定时被运行时端点拦截器改写。
+  Future<RemoteConfig> fetchRemoteFromBaseUrl(
+    String baseUrl, {
+    required Duration timeout,
+  }) async {
+    final normalizedBaseUrl = _normalizeBaseUrl(baseUrl);
+    final requestUri = Uri.parse(
+      normalizedBaseUrl,
+    ).resolve('/api/v1/client/config');
+    final cancelToken = CancelToken();
+    final response = await _dio
+        .get<Object?>(
+          requestUri.toString(),
+          queryParameters: {'platform': clientPlatformName()},
+          cancelToken: cancelToken,
+        )
+        .timeout(
+          timeout,
+          onTimeout: () {
+            cancelToken.cancel('remote config request timed out');
+            throw TimeoutException(
+              'Remote config request timed out after $timeout',
+              timeout,
+            );
+          },
+        );
+    return _storeFetchedConfig(response.data);
+  }
+
+  Future<RemoteConfig> _storeFetchedConfig(Object? payload) async {
+    final config = RemoteConfig.fromRemoteJson(payload);
+    try {
+      await _store.write(config, now: _now());
+    } catch (error) {
+      AppLogger.log(_logTag, 'cache write failed: $error');
+    }
     AppLogger.log(
       _logTag,
       'fetch ok country=${config.context.countryCode} '
@@ -125,5 +166,19 @@ class RemoteConfigService {
       'aiChatAssistant=${config.features.aiChatAssistant.enabled}',
     );
     return config;
+  }
+
+  String _normalizeBaseUrl(String baseUrl) {
+    final normalized = baseUrl.trim();
+    final uri = Uri.tryParse(normalized);
+    if (uri == null ||
+        !uri.hasAuthority ||
+        uri.host.isEmpty ||
+        (uri.scheme != 'http' && uri.scheme != 'https')) {
+      throw ArgumentError.value(baseUrl, 'baseUrl', 'must be an HTTP URL');
+    }
+    return normalized.endsWith('/')
+        ? normalized.substring(0, normalized.length - 1)
+        : normalized;
   }
 }

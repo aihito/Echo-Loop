@@ -41,6 +41,7 @@ import 'services/app_update_migration.dart';
 import 'services/media_kit_debug_initializer.dart';
 import 'services/user_id_service.dart';
 import 'widgets/app_notice_presenter.dart';
+import 'widgets/app_startup_gate.dart';
 import 'features/community_collections/data/trigger_community_sync.dart';
 import 'features/community_collections/download/community_download_notifier.dart';
 import 'features/podcast/data/podcast_catalog_service.dart';
@@ -54,6 +55,7 @@ import 'features/user_region/user_region_providers.dart';
 import 'features/subscription/providers/subscription_controller.dart';
 import 'features/subscription/providers/subscription_plans_provider.dart';
 import 'features/subscription/services/paddle_deep_link_handler.dart';
+import 'features/user_region/user_region_bootstrapper.dart';
 
 void main() async {
   final startupTrace = StartupTrace();
@@ -231,6 +233,8 @@ class _EchoLoopAppState extends ConsumerState<EchoLoopApp>
   StreamSubscription<NotificationIntent>? _intentSubscription;
   ProviderSubscription<AsyncValue<Session?>>? _authSessionSubscription;
   ProviderSubscription<AsyncValue<StartupReport>>? _localStartupSubscription;
+  ProviderSubscription<AsyncValue<UserRegionBootstrapResult>>?
+  _userRegionStartupSubscription;
   ProviderSubscription<AsyncValue<ThirdPartyStartupReport>>?
   _thirdPartyStartupSubscription;
   AppDeepLinkRouter? _appDeepLinkRouter;
@@ -243,8 +247,6 @@ class _EchoLoopAppState extends ConsumerState<EchoLoopApp>
   void initState() {
     super.initState();
     activeStartupTrace?.mark('app_widget_init_state');
-    // 在订阅任何启动 provider 前同步系统 Region 与路由，避免首批请求误发全球站。
-    _syncUserRegionRoute();
     _localStartupSubscription = ref.listenManual<AsyncValue<StartupReport>>(
       localStartupProvider,
       (_, next) {
@@ -252,6 +254,19 @@ class _EchoLoopAppState extends ConsumerState<EchoLoopApp>
       },
       fireImmediately: true,
     );
+    _userRegionStartupSubscription = ref
+        .listenManual<AsyncValue<UserRegionBootstrapResult>>(
+          userRegionBootstrapProvider,
+          (_, next) {
+            final result = next.valueOrNull;
+            if (result == null) return;
+            ref
+                .read(remoteConfigProvider.notifier)
+                .adoptStartupConfig(result.remoteConfig);
+            unawaited(_startAfterLocalDataReady());
+          },
+          fireImmediately: true,
+        );
     _thirdPartyStartupSubscription = ref
         .listenManual<AsyncValue<ThirdPartyStartupReport>>(
           thirdPartyStartupProvider,
@@ -294,6 +309,10 @@ class _EchoLoopAppState extends ConsumerState<EchoLoopApp>
   /// 依次启动所有不属于首帧关键路径的本地预热任务。
   Future<void> _startAfterLocalDataReady() async {
     if (!mounted || _didStartLocalEffects) return;
+    if (!ref.read(localStartupProvider).hasValue ||
+        !ref.read(userRegionBootstrapProvider).hasValue) {
+      return;
+    }
     _didStartLocalEffects = true;
     activeStartupTrace?.mark('main_navigation_released');
 
@@ -400,6 +419,7 @@ class _EchoLoopAppState extends ConsumerState<EchoLoopApp>
     }
     _authSessionSubscription?.close();
     _localStartupSubscription?.close();
+    _userRegionStartupSubscription?.close();
     _thirdPartyStartupSubscription?.close();
     _showcase.unregister();
     super.dispose();
@@ -443,18 +463,6 @@ class _EchoLoopAppState extends ConsumerState<EchoLoopApp>
       case AppLifecycleState.hidden:
       // no-op
     }
-  }
-
-  /// 冷启动时读取系统 Region，并固定本进程内自家服务的区域选择。
-  void _syncUserRegionRoute() {
-    final isChinaUser = ref.read(isChinaUserProvider);
-    ref
-        .read(userRegionEndpointRouterProvider)
-        .updateFromUserRegion(isChinaUser: isChinaUser);
-    AppLogger.log(
-      'UserRegion',
-      'system Region applied for this process isChinaUser=$isChinaUser',
-    );
   }
 
   /// 全局唯一社区合集同步入口；后台调用由 service 统一执行 2h 节流。
@@ -516,8 +524,9 @@ class _EchoLoopAppState extends ConsumerState<EchoLoopApp>
         GlobalCupertinoLocalizations.delegate,
       ],
       routerConfig: router,
-      builder: (context, child) =>
-          AppNoticePresenter(child: child ?? const SizedBox.shrink()),
+      builder: (context, child) => AppStartupGate(
+        child: AppNoticePresenter(child: child ?? const SizedBox.shrink()),
+      ),
       scaffoldMessengerKey: communityDownloadScaffoldMessengerKey,
     );
   }

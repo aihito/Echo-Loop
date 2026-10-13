@@ -8,6 +8,7 @@ import 'package:echo_loop/features/remote_config/remote_config.dart';
 import 'package:echo_loop/features/remote_config/remote_config_providers.dart';
 import 'package:echo_loop/features/remote_config/remote_config_service.dart';
 import 'package:echo_loop/features/remote_config/remote_config_store.dart';
+import 'package:echo_loop/features/user_region/user_region_bootstrapper.dart';
 import 'package:echo_loop/features/user_region/user_region_providers.dart';
 import 'package:echo_loop/services/backend_dio.dart';
 import 'package:echo_loop/services/runtime_endpoint_router.dart';
@@ -55,6 +56,28 @@ class _QueueAdapter implements HttpClientAdapter {
         Headers.contentTypeHeader: [Headers.jsonContentType],
       },
     );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+class _CancellationAdapter implements HttpClientAdapter {
+  final cancelled = Completer<void>();
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    final cancellation = cancelFuture;
+    if (cancellation == null) {
+      throw StateError('expected a cancellable request');
+    }
+    await cancellation;
+    cancelled.complete();
+    throw DioException(requestOptions: options, type: DioExceptionType.cancel);
   }
 
   @override
@@ -420,6 +443,51 @@ void main() {
       ).called(1);
     });
 
+    test('指定 base URL 请求不经过运行时地区改写', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final adapter = _QueueAdapter([
+        _QueuedResponse(body: _remoteConfigBody('CN')),
+      ]);
+      final dio = createBackendDio(baseUrl: 'https://default.example')
+        ..httpClientAdapter = adapter;
+      addTearDown(dio.close);
+      final service = RemoteConfigService(
+        dio: dio,
+        store: RemoteConfigStore(prefs),
+      );
+
+      final config = await service.fetchRemoteFromBaseUrl(
+        'https://china.example/',
+        timeout: const Duration(seconds: 5),
+      );
+
+      expect(adapter.requestUris.single.host, 'china.example');
+      expect(config.context.countryCode, 'CN');
+    });
+
+    test('启动请求超时会取消正在执行的 HTTP 请求', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final adapter = _CancellationAdapter();
+      final dio = createBackendDio(baseUrl: 'https://default.example')
+        ..httpClientAdapter = adapter;
+      addTearDown(dio.close);
+      final service = RemoteConfigService(
+        dio: dio,
+        store: RemoteConfigStore(prefs),
+      );
+
+      await expectLater(
+        service.fetchRemoteFromBaseUrl(
+          'https://china.example',
+          timeout: const Duration(milliseconds: 20),
+        ),
+        throwsA(isA<TimeoutException>()),
+      );
+      await adapter.cancelled.future;
+    });
+
     test(
       '503 from the selected China API does not retry another region',
       () async {
@@ -668,6 +736,34 @@ void main() {
       controller.dispose();
     });
 
+    test('启动配置被采用后可跳过重复首轮请求', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final dio = _MockDio();
+      final service = RemoteConfigService(
+        dio: dio,
+        store: RemoteConfigStore(prefs),
+      );
+      final controller = RemoteConfigController(
+        readService: () => service,
+        initialConfig: RemoteConfig.defaults,
+      );
+      final startupConfig = _config('CN');
+
+      controller.adoptStartupConfig(startupConfig);
+      controller.startPeriodicRefresh(skipInitialRequest: true);
+      await pumpEventQueue();
+
+      expect(controller.state, startupConfig);
+      verifyNever(
+        () => dio.get<Object?>(
+          '/api/v1/client/config',
+          queryParameters: any(named: 'queryParameters'),
+        ),
+      );
+      controller.dispose();
+    });
+
     test('TTL 过期后刷新成功会更新 feature provider', () async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
@@ -754,6 +850,9 @@ void main() {
           initialRemoteConfigProvider.overrideWithValue(_config('US')),
           remoteConfigServiceProvider.overrideWithValue(service),
           userRegionDeviceCountryCodeProvider.overrideWithValue(() => 'US'),
+          userRegionBootstrapProvider.overrideWith(
+            (ref) => Completer<UserRegionBootstrapResult>().future,
+          ),
         ],
       );
       addTearDown(container.dispose);

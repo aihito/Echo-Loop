@@ -188,6 +188,12 @@ class _SpyRemoteConfigService implements RemoteConfigService {
   }
 
   @override
+  Future<RemoteConfig> fetchRemoteFromBaseUrl(
+    String baseUrl, {
+    required Duration timeout,
+  }) => fetchRemote();
+
+  @override
   Future<RemoteConfig> load() async => fetchRemote();
 
   @override

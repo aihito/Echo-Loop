@@ -1,7 +1,7 @@
 import '../config/regional_service_endpoints.dart';
 import 'app_logger.dart';
 
-/// 按系统 Region 在全球和中国 API/CDN 之间固定选择一个区域。
+/// 按本次启动最终地区在全球和中国 API/CDN 之间固定选择一个区域。
 class RuntimeEndpointRouter {
   RuntimeEndpointRouter({required this.endpoints});
 
@@ -33,7 +33,7 @@ class RuntimeEndpointRouter {
 
   Uri apiUri(String path) => _resolvePath(apiBaseUrl, path);
 
-  /// 系统 Region 判定完成后立即固定 API 与 CDN 区域。
+  /// 启动地区决策完成后固定本进程的 API 与 CDN 区域。
   void updateFromUserRegion({required bool isChinaUser}) {
     _isChinaUser = isChinaUser;
     final region = _selectedRegion;

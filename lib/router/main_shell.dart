@@ -21,6 +21,8 @@ import '../services/runtime_endpoint_router.dart';
 import '../database/providers.dart';
 import '../features/podcast/podcast_refresh_controller.dart';
 import '../features/remote_config/remote_config_providers.dart';
+import '../features/user_region/user_region_bootstrapper.dart';
+import '../features/user_region/user_region_providers.dart';
 import '../providers/app_update_provider.dart';
 import '../providers/audio_library_provider.dart';
 import '../providers/collection_provider.dart';
@@ -245,7 +247,13 @@ class _MainShellState extends ConsumerState<MainShell> with RouteAware {
       ref
           .read(notificationPermissionServiceProvider)
           .syncSystemAuthorizationStatus();
-      _remoteConfigController.startPeriodicRefresh(forceFirst: true);
+      final regionResult = ref.read(userRegionBootstrapProvider).valueOrNull;
+      final startupConfigResolved =
+          regionResult?.source == UserRegionDecisionSource.remoteConfig;
+      _remoteConfigController.startPeriodicRefresh(
+        forceFirst: !startupConfigResolved,
+        skipInitialRequest: startupConfigResolved,
+      );
 
       AppLogger.log('StartupLoad', 'study bootstrap start');
       activeStartupTrace?.mark('study_bootstrap_start');
