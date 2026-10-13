@@ -2,29 +2,18 @@
 
 > `lib/services/` = 非 UI 可复用能力（不全是外部 API）。  
 > 结构类 YAML；叶子字段右侧有 `#` 中文注释，同级对齐。源码为准。  
-> 最后更新：2026-10-12  
+> 生词（NDJSON / Dio / CDN / Bearer…）先查：[术语小词典](./glossary.md)  
+> 最后更新：2026-10-13  
 > 入口：[学习地图](./README.md)
 
 ```yaml
-# 本地 / 平台（精简）
+# 每条服务固定形状（本地可省略 HTTP 字段）
 ServiceName:
   file: 相对路径                   # 源码位置
-  about: 一句话职责
-  kind: local | platform | hybrid  # 能力类型
-
-# 远端 / 有 HTTP 的服务（完整）；叶子字段右侧均有 # 注释且同级对齐
-RemoteService:
-  file: 相对路径                                                     # 源码位置
-  about: 一句话职责
-  kind: backend | hybrid                                             # 能力类型
-  client: createBackendDio | createAuthenticatedBackendDio | 裸 Dio  # 客户端工厂
-  transport: HTTPS 1.1 | HTTPS/2（AI） | 外网直连                    # 传输协议
-  auth: none | Bearer | Token Gate                                   # 鉴权方式
-  headers_extra: [...]                                               # 除公共 client-info 外的头
-  request: application/json | multipart | raw | query-only           # 请求体形态
-  response: application/json | NDJSON stream | octet-stream          # 响应形态
-  endpoints:                                                         # method / path / body|query
-    - ...
+  about: 一句话职责                # 是什么
+  does: 谁用、何时用、产出/副作用  # 具体做什么（必有）
+  kind: local | platform | backend | hybrid
+  # 远端另有：client / transport / auth / request / response / endpoints
 ```
 
 - `local`：纯本机  
@@ -36,7 +25,7 @@ RemoteService:
 
 | 节 | 内容 |
 |----|------|
-| [§0](#0-自家后端公共约定) | Backend header / Token Gate / 两种 NDJSON / CDN 下载约定 |
+| [§0](#0-公共约定文档概念不是-dart-类名) | BackendCommon / 两种 NDJSON / ModelCdnCommon（约定说明） |
 | [§1](#1-网络基建) | Dio 工厂、端点路由、Token、HTTP/2 |
 | [§2](#2-句级-ai流式) | translate / analyze / lookup / sense-groups / evaluate-review |
 | [§3](#3-云端转录) | upload-url → R2 PUT → submit / job / transcript |
@@ -46,20 +35,35 @@ RemoteService:
 
 ---
 
-## 0. 自家后端公共约定
+## 0. 公共约定（文档概念，不是 Dart 类名）
 
-所有走 `createBackendDio` / `createAuthenticatedBackendDio` 的请求共享：
+下面四个名字是**手册里的约定标签**，方便后文写「走 BackendCommon / 用 NdjsonOps…」。  
+代码里没有叫 `BackendCommon` / `NdjsonOpsProtocol` 的 class；对应实现散落在 Dio 工厂、ndjson_*、CDN 安装器里。
+
+---
+
+### BackendCommon — 打「自家后端 API」时大家共用的一套规矩
 
 ```yaml
 BackendCommon:
+  what: 文档约定名（≠ 某个 .dart 类）
+  about: 凡 createBackendDio / createAuthenticatedBackendDio 创建的请求，都遵守这套
+  does: >
+    统一「怎么连自家服务器」：基址按地区选、每个请求带平台/渠道/版本头、
+    可选登录 Token、响应里顺带读权益信号。这样 AI/转录/权益/结账等客户端不用各写一套。
+  used_by:
+    - SentenceAiApiClient、TranscriptionApiClient、ChatApiClient
+    - Entitlement / Paddle、RemoteConfig、社区合集、百度 OAuth 等
+  not_this: 外网直连（R2 预签名、CDN 模型包、播客 RSS、App Store Lookup）禁止套这套 header
+
   base_url: RuntimeEndpointRouter.apiBaseUrl          # 按系统 Region 选全球/中国，不跨区回退
-  client: Dio
+  client: Dio                                         # 经 BackendDio 工厂创建
   public_headers:                                     # BaseOptions，每个请求都带
     x-app-platform: ios|android|macos|windows|...     # 运行平台标识
     x-app-distribution: appstore|play|sideload|...    # 编译期渠道
     x-app-version: "x.y.z"                            # App 版本，可空则省略
   auth_header: "Authorization: Bearer <token>"        # 需登录端点由调用方传入
-  token_gate:                                         # createAuthenticatedBackendDio
+  token_gate:                                         # 仅 createAuthenticatedBackendDio
     before_send: TokenCoordinator 保证未过期            # 发请求前保证 token 有效
     on_401: 默认不重放；authRetryOnce 才刷新重试 1 次     # 显式 opt-in
   entitlement_header_in: "x-entitlement-active: 1|0"  # 响应头，权益拦截器读取
@@ -70,24 +74,59 @@ BackendCommon:
     - App Store Lookup
 ```
 
-### NDJSON 流式协议（两种）
+一句话：**BackendCommon = 自家 HTTPS API 的 Dio 公共配置约定。**
+
+---
+
+### NdjsonOpsProtocol — AI「结构化结果」流式协议（字段一点点长出来）
 
 ```yaml
-# A) 结构化对象（句 AI / 词典 / 意群 / 复述评估）
 NdjsonOpsProtocol:
-  about: 字段级增量；对齐后端 stream/_shared.ts
-  transport: POST + ResponseType.stream；成功体为 text/ndjson（逐行 JSON）
+  what: 文档约定名；实现 = ndjson_stream + ndjson_object_stream
+  about: 后端按行推 NDJSON；每行是「往对象某个路径写一个叶子」，客户端累积成完整业务对象
+  does: >
+    翻译/解析/AI 词典/意群/复述评估要边生成边刷新 UI：不能等整包 JSON。
+    服务端每次 flush 若干 ops（路径 p + 值 v）；客户端拼进 Map 再 fromJson，
+    收到 done 才算最终可缓存帧。对齐后端 stream/_shared.ts。
+  used_by: SentenceAiApiClient（translate / analyze / lookup-* / sense-groups / evaluate-review）
+  vs_text: 不是聊天那种「往字符串后面加字」，而是「往 JSON 树某个字段设值」
+
+  transport: POST + ResponseType.stream；成功体为 text/ndjson（一行一个 JSON）
   frames:
     ops:   '{"ops":[{"p":["path","to","leaf"],"v": <scalar>}, ...]}'  # 一批叶子，累积后 yield 一帧
     done:  '{"done":true}'                                            # 末帧 isFinal=true，可落缓存
     error: '{"__error": ...}'                                         # → NdjsonStreamException
-  non_200_body: 小 JSON {"code","error",...}（流未开时）；401/402 等由业务映射登录/额度
+  non_200_body: 小 JSON {"code","error",...}（流未开时）；401/402 → 登录/额度
   idle_timeout: aiHttpStreamIdleTimeout = 30s（帧间无字节则断）
-  decode: ndjson_stream.dart + ndjson_object_stream.dart
+  decode: lib/services/ndjson_stream.dart + ndjson_object_stream.dart
+```
 
-# B) 纯文本聊天（ChatApiClient）
+一句话：**NdjsonOpsProtocol = 流式「拼 JSON 对象」的协议（句 AI / AI 词典用）。**
+
+示例（翻译字段渐显）：
+
+```text
+{"ops":[{"p":["translation"],"v":"你"}]}
+{"ops":[{"p":["translation"],"v":"你好"}]}
+{"done":true}
+```
+
+---
+
+### NdjsonTextProtocol — AI「纯文本聊天」流式协议（字符串一点点加长）
+
+```yaml
 NdjsonTextProtocol:
-  about: 累计全文，非 ops 路径
+  what: 文档约定名；实现 = chatbot/ndjson_text_stream.dart
+  about: 同样是 NDJSON 逐行推，但语义是往一段文字后面追加 delta，不是改对象字段树
+  does: >
+    句聊/助手要打字机效果：服务端推 {"delta":"…"}，客户端 StringBuffer 累加，
+    done 结束；可选 meta.messageId。与 Ops 协议共享「一行一 JSON / done / __error」，
+    但帧形状不同，解码器用 accumulateNdjsonText 而不是 accumulateNdjsonObject。
+  used_by: ChatApiClient（如 POST /api/v1/stream/chat/sentence）
+  vs_ops: 不要用 ops 去解析聊天；也不要用 delta 去解析词典/解析结果
+
+  transport: 同左，POST + stream + NDJSON
   frames:
     delta: '{"delta":"..."}'               # 追加文本到 buffer
     meta:  '{"meta":{"messageId":"..."}}'  # 可选 messageId 等元信息
@@ -96,10 +135,35 @@ NdjsonTextProtocol:
   decode: lib/features/chatbot/services/ndjson_text_stream.dart
 ```
 
-### CDN 模型 / 资源下载（非自家 API）
+一句话：**NdjsonTextProtocol = 流式「拼字符串」的协议（聊天用）。**
+
+示例：
+
+```text
+{"delta":"Hello"}
+{"delta":" world"}
+{"done":true}
+```
+
+---
+
+### ModelCdnCommon — 下「模型/词典等大文件」时共用的 CDN 规矩（不是自家 API）
 
 ```yaml
 ModelCdnCommon:
+  what: 文档约定名（≠ 某个 class）；实现散落在 RuntimeEndpointRouter + ReliableHttpDownloader + *ArchiveInstaller
+  about: ASR/TTS/词典/发音库等离线资源从 CDN 拉归档包，不走 BackendCommon
+  does: >
+    这些是静态 zip/tar.gz，不是 JSON API：用裸 Dio GET（不带 x-app-*），
+    经可靠下载器落盘、校验、解压、写安装清单。基址与 API 同 Region，
+    但域名是 modelCdnBaseUrl，路径由各 catalog 的 archivePath 决定。
+  used_by:
+    - AsrModelManager（Whisper/VAD）
+    - Kokoro/Piper ModelManager（TTS）
+    - DictionaryDownloadManager（ECDICT sqlite.zip）
+    - PronunciationLibraryManager（真人发音包）
+  not_this: 不要 createBackendDio；不要当 REST 去 POST JSON
+
   base_url: RuntimeEndpointRouter.modelCdnBaseUrl          # 与 API 同 Region
   client: 裸 Dio + DioReliableHttpDownloader               # 禁止 BackendDio（不带 x-app-*）
   transport: HTTPS GET + ReliableHttpDownloader            # .part / Range / 校验
@@ -110,6 +174,19 @@ ModelCdnCommon:
   # 词典/发音：modelCdnUri(archivePath) 路径已含 dictionary/...
 ```
 
+一句话：**ModelCdnCommon = 离线资源 CDN 下载/安装约定（模型、词典包）。**
+
+---
+
+### 四者怎么区分（速记）
+
+| 名字 | 本质 | 典型用途 |
+|------|------|----------|
+| BackendCommon | 自家 API 的 Dio 公共头/鉴权约定 | 翻译、转录、权益、结账… |
+| NdjsonOpsProtocol | 流式拼 **JSON 对象** | 句 AI、AI 词典 |
+| NdjsonTextProtocol | 流式拼 **纯文本** | 句聊 |
+| ModelCdnCommon | CDN **大文件 GET** 约定 | Whisper/TTS/ECDICT/发音库 |
+
 ---
 
 ## 1. 网络基建
@@ -117,7 +194,8 @@ ModelCdnCommon:
 ```yaml
 BackendDio:
   file: lib/services/backend_dio.dart
-  about: 自家后端统一 Dio 工厂（header / 日志 / 权益头 / 可选 Token Gate）
+  about: 自家后端统一 Dio 工厂
+  does: 新建打自家 API 的 Dio；注入平台/渠道 header、日志、权益头；可选 Token Gate。禁止用于 R2/CDN/RSS。
   kind: backend
   factories:
     createBackendDio: 公共 header + ApiLog + EntitlementSignal + 可选 RuntimeApiEndpointInterceptor
@@ -126,7 +204,8 @@ BackendDio:
 
 RuntimeEndpointRouter:
   file: lib/services/runtime_endpoint_router.dart
-  about: 按 UserRegion 固定选全球或中国 API/CDN，未配置则报错不跨区
+  about: 按 UserRegion 固定选全球或中国 API/CDN
+  does: 启动判定中国用户后锁定区域；对外提供 apiBaseUrl / modelCdnBaseUrl；未配置该区端点则报错，不跨区回退。
   kind: local
   outputs:
     apiBaseUrl: String                         # 当前区域 API 根地址
@@ -135,31 +214,36 @@ RuntimeEndpointRouter:
 
 ClientInfo:
   file: lib/services/client_info.dart
-  about: 组装 x-app-platform / x-app-distribution / x-app-version
+  about: 组装平台/渠道/版本公共 header
+  does: 供 BackendDio 写入每个自家请求；后端据此做 AI 免费额度等策略（见 subscription-setup）。
   kind: local
 
 SupabaseTokenCoordinator:
   file: lib/services/supabase_token_coordinator.dart
-  about: access token 有效性门闸（非 HTTP 客户端；给 Dio 拦截器用）
+  about: access token 有效性门闸
+  does: 发请求前确保会话未过期（必要时 refresh）；身份切换/登出时失败可区分，供鉴权 Dio 拦截器使用。
   kind: hybrid
   protocol: Supabase GoTrue SDK（refreshSession）                    # 非 HTTP；SDK 刷新
   failures: notSignedIn | identityChanged | temporarilyUnavailable  # Token Gate 失败原因
 
 AiHttpClientAdapter / AiHttp2RetryInterceptor:
   file: lib/services/ai_http_client_adapter.dart 等
-  about: AI Dio 在 HTTPS 上启用 HTTP/2；GOAWAY/空闲连接失效可安全重试
+  about: AI 请求 HTTP/2 适配与连接层重试
+  does: 给 SentenceAi / Chat 等流式 Dio 挂 h2 adapter；GOAWAY/空闲断连时安全重试，避免整句 AI 白失败。
   kind: backend
   transport: HTTP/2（默认开；--dart-define=AI_HTTP2_ENABLED=false 回退 1.1）
   note: 仅 https baseUrl；localhost http 保持 1.1
 
 ApiLogInterceptor:
   file: lib/services/api_log_interceptor.dart
-  about: 打印 method/uri/status/耗时（流式成功体不预读）
+  about: Dio 请求诊断日志
+  does: 打 method/uri/status/耗时到 AppLogger；流式成功体不预读，避免破坏 NDJSON 消费。
   kind: local
 
 EntitlementSignalInterceptor:
   file: lib/services/entitlement_signal_interceptor.dart
-  about: 读响应头 x-entitlement-active，通知订阅层对账
+  about: 从响应头读权益信号
+  does: 计费/转录等响应带 x-entitlement-active 时通知订阅层；与本地权益不一致则回源对账（退款/到期无需轮询）。
   kind: local
   response_header: "x-entitlement-active: 1|0"  # 服务端权益快照
 ```
@@ -171,7 +255,10 @@ EntitlementSignalInterceptor:
 ```yaml
 SentenceAiApiClient:
   file: lib/services/sentence_ai_api_client.dart
-  about: 翻译 / 解析 / 查词 / 意群 / 复述评估
+  about: 句级 AI 流式客户端
+  does: >
+    精听/查词面板/意群高亮/复述评估等调用：流式返回翻译、语法解析、AI 词典、
+    意群切分、复述打分；UI 逐帧渐显。需登录；402 映射额度不足。
   kind: backend
   client: createAuthenticatedBackendDio + configureAiHttpClientAdapter
   transport: HTTPS HTTP/2（生产）+ Dio stream
@@ -236,7 +323,10 @@ SentenceAiApiClient:
 ```yaml
 TranscriptionApiClient:
   file: lib/services/transcription_api_client.dart
-  about: 用户音频上传 R2 + 提交/轮询转录
+  about: 云端 AI 转录流水线客户端
+  does: >
+    导入音频无字幕时：按 sha256 取预签名 URL → PUT 到 R2 → 提交转录任务 →
+    轮询 job → 拉回句子/词级时间戳入库。命中缓存则跳过上传或直接返回 transcript。
   kind: backend
   client: createAuthenticatedBackendDio（自家 API）；R2 上传用裸 Dio
   transport: HTTPS HTTP/1.1（未挂 AI h2 adapter）
@@ -304,7 +394,8 @@ TranscriptionApiClient:
 ```yaml
 ChatApiClient:
   file: lib/features/chatbot/services/chat_api_client.dart
-  about: 通用聊天流式（句聊等）
+  about: 通用聊天流式客户端
+  does: 句聊/助手页发多轮消息；流式吐出累计全文（delta）；endpoint 由调用方传入。
   kind: backend
   client: createAuthenticatedBackendDio + AI HTTP/2
   transport: HTTPS HTTP/2 + stream
@@ -321,7 +412,8 @@ ChatApiClient:
 
 PodcastRepository.feedFetch:
   file: lib/features/podcast/podcast_repository.dart
-  about: 拉取第三方播客 RSS（外网，非自家 API）
+  about: 拉取第三方播客 RSS
+  does: 订阅/刷新播客合集时 GET feedUrl，解析单集 enclosure 入库；遇反爬页抛错提示用户。
   kind: hybrid
   client: 裸 Dio（不带 x-app-*）
   transport: HTTPS GET
@@ -337,7 +429,8 @@ PodcastRepository.feedFetch:
 
 RemoteConfigService:
   file: lib/features/remote_config/remote_config_service.dart
-  about: 拉取客户端远程配置
+  about: 客户端远程配置
+  does: 启动/刷新拉 feature 开关与地区上下文；失败可走本地缓存或 defaults，控制云盘导入/AI 助手等能力显隐。
   kind: backend
   client: createBackendDio（通常无需登录）
   request: query-only
@@ -350,7 +443,8 @@ RemoteConfigService:
 
 PodcastCatalogService:
   file: lib/features/podcast/data/podcast_catalog_service.dart
-  about: 播客目录（catalog 内 podcastCatalogs）
+  about: 官方播客推荐目录
+  does: 资源库「发现播客」拉 /api/v1/catalog，只取 podcastCatalogs 展示可订阅节目列表。
   kind: backend
   client: createBackendDio
   endpoints:
@@ -360,7 +454,8 @@ PodcastCatalogService:
 
 CommunityCollectionApi:
   file: lib/features/community_collections/data/community_collection_api.dart
-  about: 社区合集列表 / 详情 / 文件+字幕
+  about: 社区合集 HTTP API
+  does: 浏览公开合集、翻页文件、拉单文件元数据+字幕，供一键加入本地资料库学习。
   kind: backend
   client: createBackendDio
   request: query-only
@@ -378,7 +473,8 @@ CommunityCollectionApi:
 
 BackendBaiduOAuthApi:
   file: lib/features/baidu_netdisk/data/baidu_oauth_api.dart
-  about: 百度网盘 OAuth 会话经自家后端中转
+  about: 百度网盘 OAuth 经自家后端中转
+  does: 创建/轮询/确认授权会话、刷新 token；客户端不直持百度机密，用于网盘导入音频。
   kind: backend
   client: createBackendDio
   request: application/json
@@ -399,7 +495,8 @@ BackendBaiduOAuthApi:
 
 BackendEntitlementRepository:
   file: lib/features/subscription/services/entitlement_repository.dart
-  about: 拉取用户权益
+  about: 用户订阅权益回源
+  does: 登录后拉 /api/entitlements 得到是否 Premium；非 2xx 返回 null 走缓存，避免误降级关功能。
   kind: backend
   client: createAuthenticatedBackendDio
   auth: Bearer + authRetryOnceOptions
@@ -411,7 +508,8 @@ BackendEntitlementRepository:
 
 PaddleBillingRepository / PaddlePlansService:
   file: lib/features/subscription/services/paddle_*.dart
-  about: 套餐列表、托管结账、客户门户
+  about: Paddle 订阅结账与门户
+  does: 展示套餐；创建托管 checkout 打开支付；创建 portal 管理订阅/取消；已有权益时 409。
   kind: backend
   client: authenticated + 部分公开 Dio
   endpoints:
@@ -429,7 +527,8 @@ PaddleBillingRepository / PaddlePlansService:
 
 AppUpdateChecker:
   file: lib/services/app_update_checker.dart
-  about: 检查新版本
+  about: 检查是否有新版本
+  does: iOS 查 App Store Lookup；其它平台拉自家 version.json；结果驱动更新弹窗/强制升级。
   kind: hybrid
   client: 裸 Dio（混打外网与自家，故不用全局 BackendDio header）
   endpoints:
@@ -451,7 +550,8 @@ AppUpdateChecker:
 ```yaml
 ReliableHttpDownloader:
   file: lib/services/reliable_http_downloader.dart
-  about: 通用可靠 GET 落盘（.part / Range 续传 / 原子 rename / 校验 / 重试）
+  about: 通用可靠 GET 落盘
+  does: 给 ASR/TTS/词典/播客等下载大文件；.part 续传、原子 rename、大小校验、结构化失败分类。
   kind: hybrid
   client: DioReliableHttpDownloader(dio) 或调用方注入；不自动带 x-app-*
   transport: HTTP(S) GET；可选 Range 续传
@@ -468,18 +568,21 @@ ReliableHttpDownloader:
 
 BackgroundFileDownloadService:
   file: lib/services/background_file_download_service.dart
-  about: 后台下载进度通知（限频，供播客单集等）
+  about: 后台下载进度通知
+  does: 播客单集等后台下载时限频刷新通知栏进度；不负责真正 HTTP，只管系统通知 UI。
   kind: hybrid
-  note: 业务下载仍走 ReliableHttpDownloader / 任务协调器；本类管通知 UI
+  note: 业务下载仍走 ReliableHttpDownloader / 任务协调器
 
 DownloadTaskCoordinator / DownloadTaskStore:
   file: lib/services/download/
   about: 下载任务编排与持久化
+  does: 管理可恢复的下载任务队列（状态落盘），避免杀进程后丢失进度/重复下。
   kind: hybrid
 
 ResourceArchiveInstaller:
   file: lib/services/resource_archive_installer.dart
-  about: CDN 归档下载 + 解压 + 写 ResourceInstallManifest 通式
+  about: CDN 归档安装通式
+  does: 下载 zip/tar → 解压到目标目录 → 写安装清单；TTS/词典/发音库共用此流程。
   kind: hybrid
   transport: 见 §0 ModelCdnCommon
   flow: GET uri → save archive → extract → write manifest
@@ -493,11 +596,13 @@ ResourceArchiveInstaller:
 ResourceInstallManifest:
   file: lib/services/resource_install_manifest.dart
   about: 可安装资源本地清单 schema
+  does: 记录已装资源 id/版本/校验，供启动自愈与「是否已下载」判断。
   kind: local
 
 DictionaryDownloadManager:
   file: lib/services/dictionary_download_manager.dart
-  about: 词典 ZIP 从 CDN 下载并安装
+  about: 离线词典包下载安装
+  does: 按母语从 CDN 拉 ECDICT SQLite ZIP，解压为 dict.sqlite，供本地查词；约 12MB。
   kind: hybrid
   client: 裸 Dio + ReliableHttpDownloader + ResourceArchiveInstaller
   transport: HTTPS GET
@@ -516,51 +621,61 @@ DictionaryDownloadManager:
 AudioPlaybackService:
   file: lib/services/audio_playback_service.dart
   about: 通用单文件音频播放
+  does: 简单 play/pause/seek 单文件场景（非学习任务主引擎）；封装平台播放器调用。
   kind: platform
 
 MediaPlayerBackend / MediaKitPlayerBackend:
   file: lib/services/media_player_backend.dart 等
-  about: 播放后端抽象与 media_kit 实现
+  about: 媒体播放后端抽象 + media_kit
+  does: 随心听/视频等主播放能力；抽象便于测试注入 fake，真机走 media_kit。
   kind: platform
 
 MediaKitDurationProbe:
   file: lib/services/media_kit_duration_probe.dart
-  about: 音视频时长探测（导入入库）
+  about: 音视频时长探测
+  does: 导入材料入库前探测 totalDuration，避免库列表时长为 0。
   kind: platform
 
 MediaSessionRouter:
   file: lib/services/media_session_router.dart
-  about: 全 App 唯一 audio_service / 系统媒体会话路由
+  about: 全 App 唯一系统媒体会话路由
+  does: 决定谁占用锁屏/耳机线控；前台试听与学习后台播放物理隔离（见 CLAUDE 踩坑 §7.12）。
   kind: platform
 
 EchoLoopMediaHandler / BackgroundAudioHandler:
   file: lib/services/echo_loop_media_handler.dart 等
-  about: 锁屏/通知栏媒体控件与后台播放
+  about: 锁屏控件与后台播放
+  does: 盲听/精听等学习任务后台继续播，并上报进度到通知栏/锁屏。
   kind: platform
 
 AudioPreviewController:
   file: lib/services/audio_preview_controller.dart
   about: 短音频试听状态机
+  does: 设置页音色试听、发音预览等短片段播放，与主媒体会话隔离。
   kind: platform
 
 NativeAudioDecoder:
   file: lib/services/native_audio_decoder.dart
-  about: 原生音频解码通道（PCM 等）
+  about: 原生音频解码通道
+  does: 把压缩音频解成 PCM，供字幕自动校准、静音检测等本地算法用。
   kind: platform
 
 MediaFullscreenService / WindowFullscreenService:
   file: lib/services/media_fullscreen_service.dart 等
-  about: 视频页 / 桌面窗口全屏
+  about: 全屏协调
+  does: 视频页进/出全屏；桌面端同步窗口全屏状态。
   kind: platform
 
 MediaSubtitleStyle:
   file: lib/services/media_subtitle_style.dart
   about: 视频画面字幕样式
+  does: 存取画面内嵌字幕字号等偏好，供播放页渲染。
   kind: local
 
 SilenceSkipDetector:
   file: lib/services/silence_skip_detector.dart
-  about: 字幕间隙静音段检测
+  about: 字幕间隙静音检测
+  does: 根据句间空隙判断可跳过的静音段，支持「跳过静音」类播放体验。
   kind: local
 ```
 
@@ -572,32 +687,37 @@ SilenceSkipDetector:
 RecordingService:
   file: lib/services/recording_service.dart
   about: 通用录音
+  does: 跟读/复述等任务录用户语音到本地文件，供识别或上传评估。
   kind: platform
 
 SpeechPracticePlatform:
   file: lib/services/speech_practice_platform.dart
   about: 录音识别平台通道
+  does: 调系统/插件 ASR 把跟读录音转成文本，供打分比对。
   kind: platform
 
 SpeechPracticeMatcher:
   file: lib/services/speech_practice_matcher.dart
   about: 识别文本与目标句比对
+  does: 计算跟读匹配度/对错，驱动跟读结果 UI（非云端打分）。
   kind: local
 
 SpeechPermissionService / SpeechCompletionDetector:
   file: lib/services/speech_permission_service.dart 等
   about: 录音权限；跟读完成判定
+  does: 申请麦克风权限；根据音量/停顿判断用户是否说完一句。
   kind: hybrid
 
 RetellReviewAudioPreparer:
   file: lib/services/retell_review_audio_preparer.dart
-  about: 复述评估上传前临时转码
+  about: 复述评估上传前转码
+  does: 把复述录音转成后端可收的临时 m4a，再交给 evaluateReviewStream。
   kind: hybrid
-  note: 产出文件再交给 SentenceAiApiClient.evaluateReviewStream（multipart）
 
 AsrModelManager / AsrArchiveInstaller:
   file: lib/services/asr/asr_model_manager.dart 等
   about: 离线 ASR 模型下载安装
+  does: 用户开启设备转录时下载 Whisper/VAD 模型包，供无网或隐私场景本地转写。
   kind: hybrid
   client: 裸 Dio + ReliableHttpDownloader（AsrArchiveInstaller）
   transport: HTTPS GET → zip
@@ -612,7 +732,8 @@ AsrModelManager / AsrArchiveInstaller:
 
 OfflineAsrEngine / SherpaOnnxEngine / AudioFileReader:
   file: lib/services/asr/
-  about: 本地推理与音频读入（无 HTTP）
+  about: 本地 ASR 推理
+  does: 用已装模型对音频文件做离线转写（sherpa-onnx）；读入波形、跑 VAD/识别。
   kind: local
 ```
 
@@ -623,7 +744,8 @@ OfflineAsrEngine / SherpaOnnxEngine / AudioFileReader:
 ```yaml
 KokoroModelManager / PiperModelManager:
   file: lib/services/tts/kokoro_model_manager.dart / piper_model_manager.dart
-  about: TTS 模型归档下载安装
+  about: TTS 模型下载安装
+  does: 用户选用本地 TTS 时从 CDN 拉 Kokoro/Piper 模型归档并安装，供离线朗读。
   kind: hybrid
   client: 裸 Dio + ResourceArchiveInstaller
   transport: HTTPS GET → tar.gz
@@ -632,12 +754,14 @@ KokoroModelManager / PiperModelManager:
 
 KokoroSynthesizer / PiperSynthesizer / *TtsEngine:
   file: lib/services/tts/
-  about: 本地合成 PCM/文件（无 HTTP）
+  about: 本地语音合成
+  does: 把文本合成 PCM/音频文件；统一 TTS 主干用于查词发音回退、句子朗读等。
   kind: local
 
 PronunciationLibraryManager:
   file: lib/services/pronunciation/pronunciation_library_manager.dart
-  about: 离线发音库 ZIP 下载安装
+  about: 离线真人发音库安装
+  does: 下载 pronunciation-v2.zip；词典就绪后自动/自愈安装，供单词真人发音。
   kind: hybrid
   transport: HTTPS GET
   uri: modelCdnUri(pronunciationSpec.archivePath)
@@ -645,7 +769,8 @@ PronunciationLibraryManager:
 
 PronunciationRepository / LocalAudioClipPlayer / SourceSentencePlayer:
   file: lib/services/pronunciation/
-  about: 本地查询与片段/原句区间播放
+  about: 发音查询与片段播放
+  does: 查词优先播库内 US Opus；多发音展示 badge；也可播原句时间轴区间；失败回退 TTS。
   kind: platform
 ```
 
@@ -656,12 +781,16 @@ PronunciationRepository / LocalAudioClipPlayer / SourceSentencePlayer:
 ```yaml
 DictionaryService:
   file: lib/services/dictionary_service.dart
-  about: 本地词典查询入口
+  about: 本地 SQLite 词典查询
+  does: 打开 dict.sqlite（ECDICT 数据）精确查词；返回音标/释义/柯林斯星/考试标签。
   kind: local
 
 DictionarySource 族:
   file: lib/services/dictionary/
-  about: 本地 / AI / 网页词典源
+  about: 多词典源抽象
+  does: >
+    查词面板可切换：本地 ECDICT、AI 流式释义、Cambridge/Oxford 等网页（只开 URL 不解析 HTML）。
+    本地源不可关、不需网；AI/网页需网与登录或额度。
   kind: hybrid
   ai_source: 委托 SentenceAiApiClient lookup-word / lookup-phrase（NDJSON）
   web_source: 加载网页 URL（非自家 API JSON）
@@ -669,6 +798,7 @@ DictionarySource 族:
 DictionaryCatalog:
   file: lib/services/dictionary/dictionary_catalog.dart
   about: 词典包目录元数据
+  does: 固定简繁 ZIP 的 resourceId / path / sha256 / 体积，供下载管理器定位 CDN 资源。
   kind: local
 ```
 
@@ -679,23 +809,27 @@ DictionaryCatalog:
 ```yaml
 SubtitleParser / LrcParser:
   file: lib/services/subtitle_parser.dart / lrc_parser.dart
-  about: SRT/VTT / LRC 本地解析
+  about: 字幕/歌词文件解析
+  does: 导入 SRT/VTT/LRC 时解析成句子时间轴，写入学习材料。
   kind: local
 
 SubtitleAutoAlignService:
   file: lib/services/subtitle_auto_align_service.dart
-  about: 用本地解码 + 静音检测微调句边界（非 HTTP）
+  about: 字幕时间轴本地校准
+  does: 用解码 PCM + 静音检测微调句边界；失败则保留原时间轴，避免越校越差。
   kind: local
   inputs: 音频路径 + 句子时间轴；失败回退原始字幕
 
 AudioExportService:
   file: lib/services/audio_export_service.dart
   about: 音频条目导出
+  does: 把库中条目导出为用户可分享的音频/附带文件包。
   kind: local
 
 StudyPdfExportService / Builder / Loader:
   file: lib/services/pdf_export/
   about: 学习材料 PDF 导出
+  does: 组装句子/释义等生成 PDF，供打印或外部复习。
   kind: local
 ```
 
@@ -707,21 +841,25 @@ StudyPdfExportService / Builder / Loader:
 StorageService:
   file: lib/services/storage_service.dart
   about: SharedPreferences 薄封装
+  does: 读写轻量偏好（开关、上次状态等），非业务主库（主库是 Drift）。
   kind: local
 
 StorageMigrationService / BackupService:
   file: lib/services/storage_migration_service.dart / backup/
-  about: 目录迁移；备份恢复
+  about: 目录迁移与备份恢复
+  does: 版本升级时搬数据目录；用户备份/恢复学习数据+媒体+离线词典。
   kind: local
 
 OrphanFileCleanupService / TempCleanupService:
   file: lib/services/orphan_file_cleanup_service.dart 等
-  about: 孤儿媒体 / 临时目录清理
+  about: 孤儿文件与临时目录清理
+  does: 删库记录已不在但磁盘残留的媒体；清临时转码/下载碎片，回收空间。
   kind: local
 
 BundledExampleInstaller / DemoDataSeeder:
   file: lib/services/bundled_example_installer.dart 等
-  about: 内置示例；演示数据
+  about: 内置示例与演示数据
+  does: 首启或演示模式安装示例音频/字幕，让新用户立刻能走学习闭环。
   kind: local
 ```
 
@@ -732,17 +870,22 @@ BundledExampleInstaller / DemoDataSeeder:
 ```yaml
 StudyTimeService / StudySessionTimer / StudyActivityGate:
   file: lib/services/study_*.dart
-  about: 时长入库、阶段计时、前后台资格
+  about: 学习时长统计
+  does: >
+    Gate 根据前后台决定是否计时；Timer 量单阶段墙钟；TimeService 写入日/阶段统计，
+    驱动学习报告与今日时长。
   kind: hybrid
 
 ReviewReminderService / ReviewReminderTimeCalculator:
   file: lib/services/review_reminder_*.dart
-  about: 本地通知调度与时刻计算
+  about: 收藏复习本地通知
+  does: 按调度算下次提醒时刻，注册本地通知，到点唤起用户复习收藏句/词。
   kind: platform
 
 LearnedVocabularyTracker:
   file: lib/services/learned_vocabulary_tracker.dart
   about: 已学词汇追踪
+  does: 记录用户学过的词，供统计或复习相关能力查询。
   kind: local
 ```
 
@@ -753,37 +896,44 @@ LearnedVocabularyTracker:
 ```yaml
 AppLogger / StartupTrace:
   file: lib/services/app_logger.dart 等
-  about: 日志；启动耗时
+  about: 诊断日志与启动耗时
+  does: 内存环+文件日志便于排障；StartupTrace 分段记启动各步耗时。
   kind: local
 
 AppDeepLinkRouter:
   file: lib/services/app_deep_link_router.dart
   about: Deep Link 解析分发
+  does: 处理 echo-loop:// 等外链，跳到对应页（订阅回跳、分享入口等）。
   kind: platform
 
 AppUpdateLauncher / AndroidUpdateBridge:
   file: lib/services/app_update_launcher.dart 等
-  about: 打开商店/安装包；Android 原生桥
+  about: 执行更新动作
+  does: 打开商店页或下载安装包；Android 经原生桥处理 APK 安装流程。
   kind: platform
 
 NotificationPermission* / NetworkPermissionTrigger:
   file: lib/services/notification_*.dart / network_permission_trigger.dart
-  about: 通知权限；iOS 网络权限触发
+  about: 通知与 iOS 网络权限
+  does: 申请通知权限、上报结果、处理通知点击路由；iOS 启动时触发系统网络权限弹窗。
   kind: platform
 
 AppWindowService / AppNotice / AppNetworkImageCache:
   file: lib/services/app_window_service.dart 等
-  about: 桌面窗口；Toast；图片磁盘缓存
+  about: 桌面窗口 / Toast / 图片缓存
+  does: 控制 macOS/Windows 窗口；跨页统一提示；网络封面等磁盘缓存。
   kind: hybrid
 
 UserIdService / DeviceDiagnosticsService / RefreshCoordinator:
   file: lib/services/user_id_service.dart 等
-  about: 本地用户 ID；诊断；刷新去重
+  about: 本地用户 ID、诊断、刷新去重
+  does: 生成稳定匿名用户 id；采集设备信息排障；合并并发刷新请求避免风暴。
   kind: hybrid
 
 EmbeddingSimilarity / TextEmbeddingPlatform:
   file: lib/services/embedding_similarity.dart 等
-  about: 向量相似度；Apple NLEmbedding 通道
+  about: 文本向量相似度
+  does: Apple 上走 NLEmbedding 通道算语义相近；用于相关匹配类能力（非云端 embedding API）。
   kind: platform
 ```
 
@@ -805,8 +955,8 @@ API Client（§2–4）── Dio ── BackendCommon（§0）── 自家 API
 
 ## 维护
 
-- 新增**远端**能力：补全 `client/transport/auth/request/response/endpoints`（含 body 字段）。  
-- 纯本地服务：`file/about/kind` 即可。  
+- 每条必须有 **`does`**（谁用、何时用、产出）。  
+- 远端另补：`client/transport/auth/request/response/endpoints`（含 body 字段）。  
 - Feature 内 API 客户端可记在 §4，避免只扫 `lib/services/` 根目录漏掉。
 
 

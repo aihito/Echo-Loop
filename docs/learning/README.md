@@ -12,6 +12,7 @@
 | 阶段 | 目标 | 大约投入 |
 |------|------|----------|
 | [1. 产品与跑通](#1-产品与跑通) | 知道 App 做什么，本地能跑 | 0.5～1 天 |
+| [1b. 术语小词典](#1b-术语小词典前端小白向) | 看懂 NDJSON / Dio / CDN 等黑话 | 随查 |
 | [2. 工程约定](#2-工程约定) | 知道怎么改代码、怎么验收 | 0.5 天 |
 | [3. 骨架：启动 / 路由 / 壳](#3-骨架启动--路由--壳) | 懂页面怎么挂、壳内壳外 | 1～2 天 |
 | [3b. 业务模型](#3b-业务模型) | 知道领域对象有哪些、和 DB 关系 | 0.5 天 |
@@ -40,6 +41,16 @@
 | [local-debug-windows-android.md](../local-debug-windows-android.md) | Windows 上 Android 调试（FVM、JDK、ABI、flavor 等） |
 
 建议第一次先跑通一个平台（macOS / Android 模拟器 / Windows 任选），点开：资源库 → 导入或播客 → 学习页，建立产品心智模型。
+
+---
+
+## 1b. 术语小词典（前端小白向）
+
+读业务模型 / 核心服务时，**NDJSON、Dio、CDN、Bearer、ASR…** 等词先查：
+
+**[glossary.md](./glossary.md)**
+
+按主题分组（网络、流式协议、登录订阅、音频、播客、Flutter 工程），用白话解释；不必一次读完，随查即可。
 
 ---
 
@@ -108,9 +119,9 @@ Model = 业务数据；State = 界面运行态
 
 **[core-services.md](./core-services.md)**（按域分组）
 
-- 远端：`client` / `transport` / `auth` / `request` / `response` / `endpoints`（含 body 字段）
-- 另含公共约定：Backend Dio header、两种 NDJSON、CDN 下载
-- Feature 内 API（聊天、权益、播客 RSS、合集等）在文档 §4
+- 每条有 `about` + **`does`**（具体做什么）
+- 远端另有：`client` / `transport` / `auth` / `request` / `response` / `endpoints`
+- 公共约定：Backend Dio header、两种 NDJSON、CDN 下载；Feature API 在 §4
 
 优先精读：§0 公共约定 → SentenceAiApiClient → TranscriptionApiClient → MediaSession / Recording → CDN 下载。
 
@@ -216,7 +227,7 @@ lib/
 
 ## 8. 本目录约定
 
-- 新的**学习向**笔记、读书笔记、架构草图：可继续放在 `docs/learning/`（例如 `notes-路由.md`）。业务模型增删时同步 [business-models.md](./business-models.md)；重要服务增删时同步 [core-services.md](./core-services.md)。  
+- 新的**学习向**笔记、读书笔记、架构草图：可继续放在 `docs/learning/`（例如 `notes-路由.md`）。业务模型增删时同步 [business-models.md](./business-models.md)；重要服务增删时同步 [core-services.md](./core-services.md)；新黑话补进 [glossary.md](./glossary.md)。  
 - **功能规格 / 实现计划**：仍放在 `docs/` 根下或对应 feature 文档，并在上面表格中挂链接。  
 - **任务进度**：只写 `TASKS.md` / 归档，不在本目录重复记待办。
 
