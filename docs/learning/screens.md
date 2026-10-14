@@ -1,6 +1,7 @@
 # 界面一览（`lib/screens` + 相关 Feature 页）
 
 > 页面组装层速查：谁干什么、挂在哪条路由、和哪些域相关。  
+> **完整挂载树 / 全路由 / widgets 目录穷尽**见 [ui-component-tree.md](./ui-component-tree.md)。  
 > 源码为准；路由实现见 `lib/router/app_router.dart`。  
 > 最后更新：2026-10-14 · 入口：[学习地图](./README.md)
 
