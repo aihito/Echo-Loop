@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "how-to-read-code": {
+      "source": "lichuang/how-to-read-code",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "10fd867d24ad056067d30df20f565ea70538390aba28b79265e89bfea53a22a9"
+    }
+  }
+}
