@@ -3986,11 +3986,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get discoverPodcastEmpty => 'No curated podcasts yet';
 
   @override
-  String get podcastCatalogSignInRequiredMessage =>
+  String get podcastSignInRequiredMessage =>
       'Sign in to add curated podcasts to My Collections and keep learning future episodes.';
 
   @override
-  String get podcastCatalogSubscribeFailed =>
+  String get podcastPreviewSubscribeFailed =>
       'Failed to add. Some RSS feeds or Apple Podcasts may be unavailable on the current network. Try again later or switch networks.';
 
   @override

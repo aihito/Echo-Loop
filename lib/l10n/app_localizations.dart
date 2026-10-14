@@ -6950,17 +6950,17 @@ abstract class AppLocalizations {
   /// **'No curated podcasts yet'**
   String get discoverPodcastEmpty;
 
-  /// No description provided for @podcastCatalogSignInRequiredMessage.
+  /// No description provided for @podcastSignInRequiredMessage.
   ///
   /// In en, this message translates to:
   /// **'Sign in to add curated podcasts to My Collections and keep learning future episodes.'**
-  String get podcastCatalogSignInRequiredMessage;
+  String get podcastSignInRequiredMessage;
 
-  /// No description provided for @podcastCatalogSubscribeFailed.
+  /// No description provided for @podcastPreviewSubscribeFailed.
   ///
   /// In en, this message translates to:
   /// **'Failed to add. Some RSS feeds or Apple Podcasts may be unavailable on the current network. Try again later or switch networks.'**
-  String get podcastCatalogSubscribeFailed;
+  String get podcastPreviewSubscribeFailed;
 
   /// No description provided for @podcastEnrollNeededTitle.
   ///

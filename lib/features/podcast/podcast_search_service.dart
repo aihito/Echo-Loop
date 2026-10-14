@@ -11,6 +11,7 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 
+import '../../services/app_logger.dart';
 import 'podcast_models.dart';
 
 /// 播客搜索失败（面向 UI 归一的领域异常）
@@ -36,6 +37,8 @@ class PodcastSearchService {
   }) async {
     final trimmed = term.trim();
     if (trimmed.isEmpty) return const <PodcastSearchResult>[];
+    final stopwatch = Stopwatch()..start();
+    AppLogger.log('PodcastSearch', 'request start limit=$limit');
     try {
       final response = await _dio.get<Object?>(
         'https://itunes.apple.com/search',
@@ -46,10 +49,26 @@ class PodcastSearchService {
           'limit': limit,
         },
       );
-      return parseSearchResults(response.data);
-    } on PodcastSearchException {
+      final results = parseSearchResults(response.data);
+      AppLogger.log(
+        'PodcastSearch',
+        'request success resultCount=${results.length} '
+            'elapsedMs=${stopwatch.elapsedMilliseconds}',
+      );
+      return results;
+    } on PodcastSearchException catch (error) {
+      AppLogger.log(
+        'PodcastSearch',
+        'request failed errorType=${error.runtimeType} '
+            'elapsedMs=${stopwatch.elapsedMilliseconds}',
+      );
       rethrow;
     } catch (e) {
+      AppLogger.log(
+        'PodcastSearch',
+        'request failed errorType=${e.runtimeType} '
+            'elapsedMs=${stopwatch.elapsedMilliseconds}',
+      );
       throw PodcastSearchException('播客搜索失败：$e');
     }
   }

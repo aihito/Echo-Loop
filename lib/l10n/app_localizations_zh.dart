@@ -3812,11 +3812,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get discoverPodcastEmpty => '暂无精选播客';
 
   @override
-  String get podcastCatalogSignInRequiredMessage =>
-      '登录后可以将精选播客添加到我的合集，并继续学习后续单集。';
+  String get podcastSignInRequiredMessage => '登录后可以将精选播客添加到我的合集，并继续学习后续单集。';
 
   @override
-  String get podcastCatalogSubscribeFailed =>
+  String get podcastPreviewSubscribeFailed =>
       '添加失败。部分 RSS 或 Apple Podcasts 在当前网络环境下可能不可访问，请稍后重试或切换网络。';
 
   @override

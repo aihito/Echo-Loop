@@ -218,7 +218,7 @@ class _PodcastPreviewScreenState extends ConsumerState<PodcastPreviewScreen> {
       context: context,
       ref: ref,
       title: l10n.communityCollectionSignInRequiredTitle,
-      message: l10n.podcastCatalogSignInRequiredMessage,
+      message: l10n.podcastSignInRequiredMessage,
     );
     if (!mounted || !canEnroll) return;
 
@@ -247,7 +247,7 @@ class _PodcastPreviewScreenState extends ConsumerState<PodcastPreviewScreen> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.podcastCatalogSubscribeFailed)),
+        SnackBar(content: Text(l10n.podcastPreviewSubscribeFailed)),
       );
     } finally {
       if (mounted) setState(() => _subscribing = false);

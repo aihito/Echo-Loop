@@ -13,8 +13,6 @@ import '../models/community_collection_models.dart';
 import '../models/community_collection_paging.dart';
 import '../community_collection_routes.dart';
 import '../data/trigger_community_catalog_refresh.dart';
-import '../../podcast/models/podcast_catalog.dart';
-import '../../podcast/providers/discover_podcasts_provider.dart';
 import '../providers/community_enrollment_provider.dart';
 import '../providers/discover_community_collections_provider.dart';
 import '../widgets/community_collection_card.dart';
@@ -72,7 +70,6 @@ class _DiscoverCommunityCollectionsScreenState
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(discoverCommunityCollectionsProvider);
-    final podcasts = ref.watch(discoverPodcastsProvider);
     return Scaffold(
       appBar: AppBar(
         title: Text(AppLocalizations.of(context)!.discoverCommunityCollections),
@@ -83,7 +80,7 @@ class _DiscoverCommunityCollectionsScreenState
           onRetry: () =>
               unawaited(triggerCommunityCatalogRefresh(ref, force: true)),
         ),
-        data: (page) => _buildList(context, page, podcasts),
+        data: (page) => _buildList(context, page),
       ),
     );
   }
@@ -91,7 +88,6 @@ class _DiscoverCommunityCollectionsScreenState
   Widget _buildList(
     BuildContext context,
     CommunityCollectionPagedState<PublicCollectionCatalogEntry> page,
-    List<PodcastCatalogItem>? podcasts,
   ) {
     final items = page.items;
     final collectionState = ref.watch(collectionListProvider);
@@ -102,34 +98,16 @@ class _DiscoverCommunityCollectionsScreenState
         enrolledRemoteIds.add(remoteId);
       }
     }
-    final hasPodcastEntry = podcasts?.isNotEmpty ?? false;
-    if (items.isEmpty && !hasPodcastEntry) {
-      return RefreshIndicator(
-        onRefresh: _forceRefreshCatalog,
-        child: ListView(
-          controller: _scrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          children: [
-            SizedBox(
-              height: MediaQuery.sizeOf(context).height * .6,
-              child: Center(
-                child: Text(AppLocalizations.of(context)!.discoverEmpty),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+    final contentCount = 1 + (items.isEmpty ? 1 : items.length);
     return RefreshIndicator(
       onRefresh: _forceRefreshCatalog,
       child: ListView.builder(
         controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
         itemCount:
-            items.length +
-            (hasPodcastEntry ? 1 : 0) +
+            contentCount +
             (page.isLoadingMore || page.loadMoreError != null ? 1 : 0),
         itemBuilder: (context, index) {
-          final contentCount = items.length + (hasPodcastEntry ? 1 : 0);
           if (index == contentCount) {
             return _CommunityLoadMoreFooter(
               isLoading: page.isLoadingMore,
@@ -140,10 +118,18 @@ class _DiscoverCommunityCollectionsScreenState
               ),
             );
           }
-          if (hasPodcastEntry && index == 0) {
+          if (index == 0) {
             return const _PodcastDiscoverEntry();
           }
-          final item = items[index - (hasPodcastEntry ? 1 : 0)];
+          if (items.isEmpty) {
+            return SizedBox(
+              height: MediaQuery.sizeOf(context).height * .6,
+              child: Center(
+                child: Text(AppLocalizations.of(context)!.discoverEmpty),
+              ),
+            );
+          }
+          final item = items[index - 1];
           return CommunityCollectionCard(
             item: item,
             enrolled: enrolledRemoteIds.contains(item.id),
@@ -220,7 +206,7 @@ class _CommunityLoadMoreFooter extends StatelessWidget {
   }
 }
 
-/// `/discover` 中的 Podcast 入口；内容由独立的 Podcast catalog 提供。
+/// `/discover` 中显示的 Apple Podcasts 入口。
 class _PodcastDiscoverEntry extends StatelessWidget {
   const _PodcastDiscoverEntry();
 
