@@ -70,12 +70,28 @@ runApp
                             │     └── branches[]  ← StatefulShellBranch（仅此处有 branch）
                             │           │
                             │           ├── [0] /collections → LibraryScreen 〔shell〕
-                            │           │     ├── pdf-preview → PdfPreviewScreen 〔rootNav〕
-                            │           │     ├── discover → DiscoverCommunityCollectionsScreen
-                            │           │     │     └── :remoteId → CommunityCollectionDetailScreen
-                            │           │     ├── podcast… → PodcastDiscoveryScreen
+                            │           │     │
+                            │           │     │  ※ 下列缩进 = GoRouter「子路由 / URL 嵌套」，
+                            │           │     │    不是 LibraryScreen.build() 里的 child Widget。
+                            │           │     │    点入口后换 URL，由对应 Screen 的 builder 画页面；
+                            │           │     │    仍属资源库 branch → 底栏还在「资源库」。
+                            │           │     │
+                            │           │     ├── pdf-preview
+                            │           │     │     URL: /collections/pdf-preview
+                            │           │     │     → PdfPreviewScreen 〔rootNav〕
+                            │           │     ├── discover
+                            │           │     │     URL: /collections/discover
+                            │           │     │     → DiscoverCommunityCollectionsScreen 〔shell〕
+                            │           │     │     └── :remoteId
+                            │           │     │           URL: /collections/discover/:remoteId
+                            │           │     │           → CommunityCollectionDetailScreen
+                            │           │     ├── podcast（subscribe 段）
+                            │           │     │     URL: /collections/…/podcast…
+                            │           │     │     → PodcastDiscoveryScreen 〔shell〕
                             │           │     │     └── preview → PodcastPreviewScreen
-                            │           │     └── :collectionId → CollectionDetailScreen
+                            │           │     └── :collectionId
+                            │           │           URL: /collections/:collectionId
+                            │           │           → CollectionDetailScreen 〔shell〕
                             │           │           ├── pdf-preview → PdfPreviewScreen 〔rootNav〕
                             │           │           ├── :audioId/plan → LearningPlanScreen 〔rootNav〕
                             │           │           │     └── pdf-preview → PdfPreviewScreen
