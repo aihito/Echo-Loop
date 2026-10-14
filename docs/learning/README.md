@@ -17,6 +17,7 @@
 | [3. 骨架：启动 / 路由 / 壳](#3-骨架启动--路由--壳) | 懂页面怎么挂、壳内壳外 | 1～2 天 |
 | [3b. 业务模型](#3b-业务模型) | 知道领域对象有哪些、和 DB 关系 | 0.5 天 |
 | [3c. 核心服务](#3c-核心服务) | 知道 `lib/services` 里有什么、干什么 | 0.5 天 |
+| [3d. 后端 API 契约](#3d-后端-api-契约) | 自家 HTTP 路径、参数、流式协议（对接/重写后端） | 0.5 天 |
 | [4. 核心域：学习闭环](#4-核心域学习闭环) | 盲听 / 精听 / 跟读 / 复述 / 复习 | 3～5 天 |
 | [5. 横切能力](#5-横切能力) | 音频引擎、词典、播客、订阅、AI | 按兴趣选学 |
 | [6. 踩坑与深水区](#6-踩坑与深水区) | 读 ADR/踩坑，避免重复踩雷 | 持续 |
@@ -125,6 +126,16 @@ Model = 业务数据；State = 界面运行态
 
 优先精读：§0 公共约定 → SentenceAiApiClient → TranscriptionApiClient → MediaSession / Recording → CDN 下载。
 
+---
+
+## 3d. 后端 API 契约
+
+若要**用 Go（或其它语言）实现/替换自家后端**，按客户端真实调用整理的路径与参数见：
+
+**[backend-api.md](./backend-api.md)**
+
+含：公共 Header、两种 NDJSON、句 AI / 转录 / 句聊 / 权益·Paddle / 配置·合集·网盘、`version.json`，以及建议实现顺序。术语不明时配合 [glossary.md](./glossary.md)。
+
 ### 目录地图（lib/）
 
 ```text
@@ -227,7 +238,7 @@ lib/
 
 ## 8. 本目录约定
 
-- 新的**学习向**笔记、读书笔记、架构草图：可继续放在 `docs/learning/`（例如 `notes-路由.md`）。业务模型增删时同步 [business-models.md](./business-models.md)；重要服务增删时同步 [core-services.md](./core-services.md)；新黑话补进 [glossary.md](./glossary.md)。  
+- 新的**学习向**笔记、读书笔记、架构草图：可继续放在 `docs/learning/`（例如 `notes-路由.md`）。业务模型增删时同步 [business-models.md](./business-models.md)；重要服务增删时同步 [core-services.md](./core-services.md)；API 路径/字段变更同步 [backend-api.md](./backend-api.md)；新黑话补进 [glossary.md](./glossary.md)。  
 - **功能规格 / 实现计划**：仍放在 `docs/` 根下或对应 feature 文档，并在上面表格中挂链接。  
 - **任务进度**：只写 `TASKS.md` / 归档，不在本目录重复记待办。
 

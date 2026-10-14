@@ -3,6 +3,7 @@
 > `lib/services/` = 非 UI 可复用能力（不全是外部 API）。  
 > 结构类 YAML；叶子字段右侧有 `#` 中文注释，同级对齐。源码为准。  
 > 生词（NDJSON / Dio / CDN / Bearer…）先查：[术语小词典](./glossary.md)  
+> 对接/重写后端（含参数）：[backend-api.md](./backend-api.md)  
 > 最后更新：2026-10-13  
 > 入口：[学习地图](./README.md)
 
@@ -14,6 +15,7 @@ ServiceName:
   does: 谁用、何时用、产出/副作用  # 具体做什么（必有）
   kind: local | platform | backend | hybrid
   # 远端另有：client / transport / auth / request / response / endpoints
+  # endpoints[] 每条必有 purpose（该 API 干什么）+ 字段树
 ```
 
 - `local`：纯本机  
@@ -266,46 +268,125 @@ SentenceAiApiClient:
   request: 多数 application/json；evaluate-review 为 multipart/form-data
   response: NDJSON ops 协议（见 §0）；非 200 为小 JSON
   timeouts: connect 15s / receive 30s（到首字节）；帧间 idle 30s
+  # 下列成功体均为 NDJSON Ops：逐帧累积 → 下列 schema；末帧 {"done":true}
+  # 非 200：小 JSON {code,error}；401 登录；402 额度（lookup 另见）
+  # 每个 endpoint 必有 purpose（干什么）；字段树见 body / response_*
   endpoints:
     - method: POST
       path: /api/v1/stream/translate
+      purpose: 精听/句详情点「翻译」——只译当前句（可带前后文），流式吐出译文供面板展示
       body:
         text: string                       # 目标句
         previousText: string?              # 上文，可选
         nextText: string?                  # 下文，可选
         targetLanguage: string?            # BCP 47，如 zh-CN
-      response_accumulates: SentenceTranslation（字段 translation）
+      response_proto: NdjsonOpsProtocol
+      response_object:                     # 累积成 SentenceTranslation
+        translation: string                # 译文；ops 路径 ["translation"]
 
     - method: POST
       path: /api/v1/stream/analyze
+      purpose: 精听点「解析」——对单句做语法/词汇/听力要点分析，流式填入解析卡
       body:
         text: string                       # 目标句原文
         targetLanguage: string?            # BCP 47，如 zh-CN
-      response_accumulates: SentenceAnalysis（grammar/vocabulary/listening…）
+      response_proto: NdjsonOpsProtocol
+      response_object:                     # 累积成 SentenceAnalysis（半成品可空）
+        grammar:                           # 语法要点 1~3
+          - point: string                  # 结构/句型短标签
+            note: string                   # 通俗说明
+        vocabulary:                        # 词汇 0~4
+          - term: string                   # 原句中的词/短语
+            note: string                   # 含义/搭配
+        listening:                         # 听力难点 1~3
+          - phrase: string                 # 原句片段
+            note: string                   # 连读/弱读等说明
+      # ops 例：["grammar",0,"point"] / ["vocabulary",1,"note"]
 
     - method: POST
       path: /api/v1/stream/lookup-word
+      purpose: 查词面板「AI 词典」查单词——流式生成结构化词条；与本地 ECDICT 互补；计额度
       body:
         query: string                      # 单词（规范化后无空白）
         targetLanguage: string?            # BCP 47，如 zh-CN
-      response_accumulates: DictionaryEntry
-      errors: 400 phrase_too_long | 401 DictionaryAuthRequired | 402 额度
+      response_proto: NdjsonOpsProtocol
+      response_object:                     # 累积成 DictionaryEntry（单词）
+        headword: string                   # 词头（原形）
+        pronunciation:                     # 英美音标，可空串
+          uk: string                       # 英式 IPA
+          us: string                       # 美式 IPA
+        meanings:                          # 词义列表（常用在前）
+          - partOfSpeech: string           # n./v./adj.…
+            translation: [string]          # 目标语对译，每条一项
+            definition: string             # 英英释义
+            usageNote: string              # 用法注（语域/易混），可空
+            examples:                      # 中英对照例句
+              - sentence: string           # 英文例句
+                translation: string        # 译文
+            synonyms: [string]             # 同义词
+            antonyms: [string]             # 反义词
+        commonExpressions:                 # 搭配/习语/短语动词
+          - expression: string             # 表达本体
+            type: string                   # collocation|idiom|phrasal verb|…
+            meaning: string                # 含义或用法注
+            example:                       # 单条例句
+              sentence: string
+              translation: string
+        wordFamily:                        # 词族（派生/相关词形）
+          - word: string                   # 相关词
+            partOfSpeech: string           # 词性
+            meaning: string                # 与词头不同处的简明释义
+            example: { sentence, translation }
+        forms:                             # 屈折变化
+          - form: string                   # 英文形式，如 did / done
+            label: string                  # 目标语标签，如「过去式」
+        etymology: string                  # 词源简注，可空
+        learnerTips: [string]              # 学习者提示，每条一项
+      errors: 401 需登录 | 402 额度
 
     - method: POST
       path: /api/v1/stream/lookup-phrase
+      purpose: 查词面板「AI 词典」查多词/短语——自然度、类别、要点与相近表达；过长 phrase_too_long
       body:
         query: string                      # 多词/短语（含空白）
         targetLanguage: string?            # BCP 47，如 zh-CN
-      response_accumulates: MultiWordDictionaryEntry
+      response_proto: NdjsonOpsProtocol
+      response_object:                     # 累积成 MultiWordDictionaryEntry
+        originalExpression: string         # 表达本体；兼容缺省时读 headword
+        naturalness: string                # 不自然时的纠正说明；自然可空
+        category: string                   # 短语动词/搭配/习语/术语…
+        pronunciationTips: [string]        # 连读/弱读/重音等，可空列表
+        keyPoints:                         # 核心要点（重要在前）
+          - point: string                  # 要点说明（目标语）
+            sentence: string               # 英文例句，可空
+            translation: string            # 例句译文，无例句则空
+        meanings:                          # 各义项
+          - translation: [string]          # 目标语对译
+            examples:
+              - sentence: string
+                translation: string
+        similarExpressions:                # 相近/替代/易混
+          - expression: string             # 相近表达
+            difference: string             # 与原表达差异说明
+            sentence: string               # 例句
+            translation: string            # 例句译文
+        background: string                 # 补充背景，可空
+      errors: 400 phrase_too_long | 401 | 402
 
     - method: POST
       path: /api/v1/stream/sense-groups
+      purpose: 精听/意群模式——把一句切成 medium/fine 两档意群，供高亮与分段跟读；不翻译
       body:
         text: string                       # 原句；无意群目标语言字段
-      response_accumulates: SenseGroupResult（medium → fine）
+      response_proto: NdjsonOpsProtocol
+      response_object:                     # 累积成 SenseGroupResult
+        medium: [string]                   # 中等粒度意群（口语节奏）
+        fine: [string]                     # 细粒度意群
+      # 通常先推 medium[] 再 fine[]；列表可有 null 占位洞，客户端过滤
 
     - method: POST
       path: /api/v1/stream/evaluate-review
+      purpose: 复述结束后上传录音+原文，AI 打分并给出要点覆盖/纠错/建议，驱动复述报告页
       content_type: multipart/form-data
       body:
         file: MultipartFile                # 本地录音，filename retell-review.m4a
@@ -313,9 +394,24 @@ SentenceAiApiClient:
         language: "en"                     # 固定写死英语源
         targetLanguage: string             # 评估说明语言（BCP 47）
       metering: 后端 retell_review 口径
-      response_accumulates: RetellReviewEvaluation
+      response_proto: NdjsonOpsProtocol
+      response_object:                     # 累积成 RetellReviewEvaluation
+        transcript: string                 # 整段录音转写（常经 meta 写入）
+        summary: string                    # 总评
+        rating: poor|fair|good|excellent|perfect?  # 可晚到
+        suggestion: string                 # 一条高价值建议，可空
+        keyPoints:                         # 要点还原，上限约 20
+          - keyPoint: string               # 母语表述（成形信号）
+            original: string               # 原文摘录，可空
+            transcript: string             # 口语音转摘录，可空
+            status: covered|partial|missed|distorted|added?
+            feedback: string               # 该条反馈，可空
+        corrections:                       # 局部纠错，上限约 10
+          - type: grammar|wordChoice|redundancy|phrasing|cohesion?
+            transcript: string             # 问题片段
+            correction: string             # 更正说法
+            explanation: string            # 母语说明
 ```
-
 ---
 
 ## 3. 云端转录
@@ -336,26 +432,29 @@ TranscriptionApiClient:
   endpoints:
     - method: POST
       path: /api/v2/user-audio/upload-url
+      purpose: 云端转写第一步——按 sha256 问是否已在对象存储；否则签发预签名 PUT URL
       body:
         sha256: string                     # 音频内容指纹
         mimeType: string                   # MIME 类型
         fileSize: int                      # 文件字节数
       response:
-        audioExists: bool                  # true 则可跳过上传
-        uploadUrl: string?                 # 预签名 PUT URL
-        objectName: string                 # R2 对象路径
-        publicUrl: string                  # R2 公开访问 URL
+        audioExists: bool                  # true → 可跳过 PUT 上传
+        uploadUrl: string?                 # 预签名 PUT URL；仅 audioExists=false
+        objectName: string?                # R2 对象路径
+        publicUrl: string?                 # R2 公开访问 URL
 
     - method: PUT
       path: "<presigned R2 URL>"           # 完整 URL，非自家 base
+      purpose: 客户端把音频字节直传 R2（不经自家 API 中转文件体）；Go 只负责签发 URL
       headers:
-        Content-Type: mimeType             # 上传 MIME
+        Content-Type: mimeType             # 须与申请 upload-url 时一致
         Content-Length: fileLength         # 上传字节长度
       body: 文件字节流（file.openRead()）
       note: 裸 Dio + ApiLogInterceptor(tag=R2-UPLOAD)；不带 x-app-*
 
     - method: POST
       path: /api/v2/user-audio/submit-transcription
+      purpose: 上传完成（或 audioExists）后提交转写；命中缓存直接返回 transcript，否则返回 jobId
       body:
         sha256: string                     # 音频内容指纹
         fileName: string?                  # 原始文件名，可选
@@ -366,25 +465,37 @@ TranscriptionApiClient:
         language: string                   # 转录语言
         mergeSentences: bool               # 是否合并短句，默认 true
       response:
-        cached: bool                       # true 时直接带 transcript
-        jobId: string?                     # 异步任务 ID
-        transcript: object?                # 缓存命中时的转录结果
+        cached: bool                       # true → 带 transcript，无 jobId
+        jobId: string?                     # 异步任务 ID（cached=false）
+        transcript: TranscriptResult?      # 结构同下方 GET transcript
 
     - method: GET
       path: /api/v2/user-audio/job-status/{jobId}
+      purpose: 轮询异步转写是否完成；succeeded 后再拉 transcript
       response:
         status: queued|running|succeeded|failed  # 任务状态
-        error: string?                           # 失败信息，仅 failed
+        errorMessage: string?                    # 仅 failed；字段名是 errorMessage
 
     - method: GET
       path: /api/v2/user-audio/transcript
+      purpose: 按内容指纹+语言取最终字幕（句子+可选词级时间戳），写入本地学习材料
       query:
         sha256: string                     # 音频内容指纹
         language: string                   # 转录语言
         mergeSentences: bool               # 是否合并短句，默认 true
-      response: TranscriptResult（sentences / wordTimestamps / text）
+      response:                            # TranscriptResult
+        fullText: string                   # 全文
+        sentences:
+          - text: string                   # 句文本
+            startTime: number              # 秒（浮点）
+            endTime: number                # 秒（浮点）
+            startWordIndex: int?           # 在 words[] 中的起始下标
+            endWordIndex: int?             # 在 words[] 中的结束下标
+        words:                             # 词级时间戳，可空列表
+          - word: string                   # 词文本
+            startTime: number              # 秒
+            endTime: number                # 秒
 ```
-
 ---
 
 ## 4. 其它远端 API（多在 features/，同样走 BackendDio）
@@ -405,10 +516,21 @@ ChatApiClient:
   endpoints:
     - method: POST
       path: 调用方传入，如 /api/v1/stream/chat/sentence
+      purpose: 句聊/助手页发多轮对话——带历史与可选句上下文，助手回答以 delta 流式打出
       body:
-        messages: [{role, content}, ...]   # ChatMessage.toWire(+ followUpInstruction)
-        context: map?                      # 句聊等业务上下文
+        messages:                          # 多轮历史
+          - role: string                   # user | assistant 等
+            content: string                # 可含追问 <quote>…</quote>
+        context: map?                      # 句聊上下文；空对象则省略不传
         targetLanguage: string?            # BCP 47，如 zh-CN
+      response_proto: NdjsonTextProtocol
+      response_frames:                     # 非累积对象，是文本帧
+        delta: string                      # 追加到全文 buffer
+        meta:                              # 可选元信息帧
+          messageId: string?               # 服务端消息 id
+        done: true                         # 正常结束
+        __error: object?                   # 流内错误
+      # 客户端最终：ChatTextFrame{ text, isFinal, messageId? }
 
 PodcastRepository.feedFetch:
   file: lib/features/podcast/podcast_repository.dart
@@ -425,7 +547,9 @@ PodcastRepository.feedFetch:
   endpoints:
     - method: GET
       path: "<user/catalog podcastFeedUrl>"
+      purpose: 拉取该播客 RSS XML，解析单集 enclosure 入库；遇反爬页抛错
       options: { responseType: plain }
+      # 解析后本地模型字段由 PodcastFeedParser 决定，非自家 JSON 契约
 
 RemoteConfigService:
   file: lib/features/remote_config/remote_config_service.dart
@@ -438,8 +562,27 @@ RemoteConfigService:
   endpoints:
     - method: GET
       path: /api/v1/client/config
+      purpose: 启动/刷新远程开关与地区上下文——控制云盘导入、AI 助手等显隐及转录上限
       query:
-        platform: string                     # clientPlatformName()
+        platform: string                   # clientPlatformName()
+      response:                            # RemoteConfig.fromRemoteJson
+        version: int                       # 必填；当前客户端认 1，否则 FormatException
+        ttlSeconds: int?                   # 缓存 TTL，缺省 86400；≤0 回退默认
+        context:
+          countryCode: string?             # 国家码；空/unknown → 客户端当 null
+          platform: string?                # 回显平台，可空串
+          channel: string?                 # 回显渠道，可空串
+        features:
+          cloudDriveImport:
+            enabled: bool                  # 网盘导入总入口；默认 true
+          showStoreWebCheckoutFallback:
+            enabled: bool                  # 商店包 Web 支付兜底入口；默认 false
+          aiChatAssistant:
+            enabled: bool                  # AI 助手入口；默认 true
+        limits:                            # 可选；嵌套 transcription
+          transcription:
+            maxDurationSeconds: int        # 云端转录最长秒数；默认 1800
+            maxUploadBytes: int            # 云端转录最大字节；默认 25MB
 
 PodcastCatalogService:
   file: lib/features/podcast/data/podcast_catalog_service.dart
@@ -450,7 +593,15 @@ PodcastCatalogService:
   endpoints:
     - method: GET
       path: /api/v1/catalog
-      response: JSON（再取 podcastCatalogs）
+      purpose: 资源库「发现播客」——返回运营推荐节目列表；客户端只读 podcastCatalogs
+      response:
+        podcastCatalogs:                   # 客户端只消费此字段
+          - id: string                     # 目录条目 id
+            title: string                  # 节目名
+            description: string?           # 简介
+            imageUrl: string?              # 封面
+            applePodcastUrl: string        # Apple Podcasts URL（订阅优先）
+            rssUrl: string                 # RSS feed URL（Apple 空时回退）
 
 CommunityCollectionApi:
   file: lib/features/community_collections/data/community_collection_api.dart
@@ -463,13 +614,72 @@ CommunityCollectionApi:
   endpoints:
     - method: GET
       path: /api/v2/collections
-      query: cursor?
+      purpose: 社区首页分页列出公开合集（约 20 条/页），供浏览与进入详情
+      query:
+        cursor: string?                    # 分页游标；首屏省略
+      response:
+        items:                             # PublicCollectionCatalogEntry，约 20/页
+          - id: string
+            name: string                   # 合集名
+            description: string?
+            coverUrl: string?
+            authorNickname: string?
+            fileCount: int                 # 文件数
+            publishedAt: string            # ISO-8601
+            updatedAt: string?             # 缺省等同 publishedAt
+        nextCursor: string?                # 下一页；无则结束
     - method: GET
       path: /api/v2/collections/{collectionId}
-      query: cursor?
+      purpose: 打开某个合集——返回合集元信息 + 一页可学文件；翻页用 cursor
+      query:
+        cursor: string?
+      response:
+        collection:                        # 同目录条目形状
+          id: string
+          name: string
+          description: string?
+          coverUrl: string?
+          authorNickname: string?
+          fileCount: int
+          publishedAt: string
+          updatedAt: string?
+        items:                             # CommunityCollectionFile 一页
+          - id: string
+            title: string
+            description: string?
+            mediaType: audio|video
+            durationSec: int?
+            fileSizeBytes: int?
+            difficulty: A1|A2|B1|B2|C1|C2?
+            publishedAt: string?
+            sortOrder: int
+            mediaUrl: string               # 媒体直链
+        nextCursor: string?
     - method: GET
       path: /api/v2/collections/{id}/files/{fileId}
-      errors: 404 not found | 422 字幕不可用
+      purpose: 导入某集前拉取文件元数据 + 字幕；成功后可落成本地材料进入学习
+      response:
+        file:                              # 同 CommunityCollectionFile
+          id: string
+          title: string
+          description: string?
+          mediaType: audio|video
+          durationSec: int?
+          fileSizeBytes: int?
+          difficulty: A1|A2|B1|B2|C1|C2?
+          publishedAt: string?
+          sortOrder: int
+          mediaUrl: string
+        subtitle:
+          sentences:
+            - text: string
+              startTime: number            # 秒；客户端转 Duration
+              endTime: number              # 秒；须 ≥ startTime
+          words:                           # 词级；可空列表但字段必有
+            - word: string
+              startTime: number            # 秒
+              endTime: number
+      errors: 404 合集/文件不存在 | 422 字幕不可用
 
 BackendBaiduOAuthApi:
   file: lib/features/baidu_netdisk/data/baidu_oauth_api.dart
@@ -482,16 +692,49 @@ BackendBaiduOAuthApi:
   endpoints:
     - method: POST
       path: /api/v1/netdisk/baidu/oauth/session
-      body: { platform, forceLogin? }
+      purpose: 开始网盘授权——创建会话，返回浏览器授权 URL 与轮询凭证
+      body:
+        platform: string                   # ios|android|macos|windows|linux
+        forceLogin: bool?                  # 强制重新登录
+      response:                            # BaiduOAuthSession
+        sessionId: string                  # 不透明会话 ID
+        pollToken: string                  # 一次性轮询凭证（仅内存）
+        authorizationUrl: string           # 浏览器打开的百度授权 URL
+        expiresAt: string                  # ISO-8601 UTC
+        pollIntervalSeconds: int           # 建议轮询间隔，≥1
     - method: POST
       path: /api/v1/netdisk/baidu/oauth/session/status
-      body: { sessionId, pollToken }
+      purpose: 授权过程中轮询——是否仍 pending、是否已拿到凭证、是否取消/失败
+      body:
+        sessionId: string
+        pollToken: string
+      response:                            # BaiduOAuthSessionStatus
+        status: pending|exchanging|completed|canceled|failed
+        credential:                        # 仅 completed 必有
+          accessToken: string
+          refreshToken: string
+          expiresAt: string                # access 过期 ISO-8601 UTC
+          scope: string                    # 百度 scope 原文
+        error:                             # failed/canceled 可选
+          code: string
+          message: string
     - method: POST
       path: /api/v1/netdisk/baidu/oauth/session/acknowledge
-      body: { sessionId, pollToken }
+      purpose: 客户端已安全收下凭证后告知后端，便于清理会话状态
+      body:
+        sessionId: string
+        pollToken: string
+      response: 空/确认即可
     - method: POST
       path: /api/v1/netdisk/baidu/oauth/refresh
-      body: { refreshToken }
+      purpose: accessToken 过期时用 refreshToken 换新凭证，继续列目录/下文件
+      body:
+        refreshToken: string
+      response:                            # BaiduCredentialBundle
+        accessToken: string
+        refreshToken: string
+        expiresAt: string
+        scope: string
 
 BackendEntitlementRepository:
   file: lib/features/subscription/services/entitlement_repository.dart
@@ -503,8 +746,20 @@ BackendEntitlementRepository:
   endpoints:
     - method: GET
       path: /api/entitlements
-      query: force=1?                  # 强制回源
-      response: Entitlement JSON；非 2xx → null（走缓存，不误降级）
+      purpose: >
+        查询是否 Premium 及到期/续订；force=1 强刷。
+        isPremium=false=权威免费；非 2xx 不当成免费（走缓存）
+      query:
+        force: "1"?                        # 强制回源；省略则允许中间层缓存
+      response:
+        isPremium: bool                    # false = 权威免费（可降级）
+        entitlementIds: [string]?          # 权益 id 列表
+        productId: string?                 # 当前商品 id
+        expiresAtMs: int?                  # UTC 毫秒到期
+        willRenew: bool?                   # 是否将自动续订
+        source: string?                    # 权益来源标识
+        purchaseType: string?              # subscription|one_time|… → 客户端映射周期
+      # 非 2xx → 失败走缓存，不把错误当成「降级为免费」
 
 PaddleBillingRepository / PaddlePlansService:
   file: lib/features/subscription/services/paddle_*.dart
@@ -515,15 +770,47 @@ PaddleBillingRepository / PaddlePlansService:
   endpoints:
     - method: GET
       path: /api/paddle/plans
+      purpose: 订阅/付费墙展示可买套餐（月/年及可选一次性）与地区化价格
+      response:
+        serverTime: string?                # 服务端时间，缓存 meta 用
+        plans:                             # 自动续费订阅；planId 现认 plus_monthly|plus_yearly
+          - planId: string
+            priceString: string            # 地区化续费价（含币种符号）
+            hasFreeTrial: bool?            # 是否免费试用
+            trialDays: int?                # 试用天数；无试用为 0
+            introOffer:                    # 可选促销
+              discountType: "percentage"   # 现仅认 percentage
+              discountPercent: number      # 1~100；客户端推算优惠价串
+              renewalPriceString: string   # 促销结束后续费价展示
+              period: day|week|month|year?
+              periodNumberOfUnits: int?    # 促销周期单位数，默认 1
+              cycles: int?                 # 促销周期次数，默认 1
+              isFreeTrial: bool?           # 是否免费试用形态
+        oneTimePlans:                      # 可选；单项坏数据忽略不拖垮订阅列表
+          - planId: "plus_yearly_one_time" # 现仅认此 id
+            priceString: string
+            purchaseType: "one_time"
+            accessType: "fixed_term"
+            autoRenew: false
+            duration: { unit: "year", count: 1 }
     - method: POST
       path: /api/paddle/hosted-checkout
-      body: { planId, locale }
-      headers: Authorization, Idempotency-Key
-      response: { attemptId, checkoutUrl }
-      errors: 409 already_entitled
+      purpose: 用户点购买——创建 Paddle 托管结账，返回 checkoutUrl；幂等防连点
+      body:
+        planId: string                     # 与 plans / oneTimePlans 的 planId 对应
+        locale: string                     # BCP 47 language tag
+      headers:
+        Authorization: Bearer ...
+        Idempotency-Key: uuid              # 防重复下单
+      response:
+        attemptId: string                  # 结账尝试 id
+        checkoutUrl: string                # 必须 https 可打开 URL
+      errors: 409 + code=already_entitled
     - method: POST
       path: /api/paddle/portal
-      response: { portalUrl }
+      purpose: 已订阅用户管理订阅（取消/换卡等）——返回短期 Customer Portal URL
+      response:
+        portalUrl: string                  # Customer Portal https URL
 
 AppUpdateChecker:
   file: lib/services/app_update_checker.dart
@@ -534,13 +821,41 @@ AppUpdateChecker:
   endpoints:
     - method: GET
       path: https://itunes.apple.com/lookup
-      query: { bundleId, country? }
-      response: text/javascript → 自行 jsonDecode
+      purpose: iOS 查 App Store 最新版本，驱动更新弹窗（非自家契约）
+      query:
+        bundleId: string                   # App bundle id
+        country: string?                   # 商店国家，可选
+      response: text/javascript → jsonDecode
+        # 常用 results[0].version / trackViewUrl 等；非自家契约
       headers: 不带 x-app-*
     - method: GET
-      path: {apiBase}/version.json     # 非 iOS
-      headers: clientInfoHeaders()     # 仅此请求带自家标识
-      response: AppUpdateInfo JSON
+      path: {apiBase}/version.json         # 非 iOS
+      purpose: 非 iOS 检查更新——比较 latest/minimum，驱动可选更新或强制升级
+      headers: clientInfoHeaders()         # 仅此请求带自家标识
+      response:                            # AppUpdateInfo.fromJson
+        latestVersion: string              # 必填；最新可用版本
+        minimumVersion: string             # 必填；低于则强制更新
+        releaseNotes:                      # 可选；locale → 文案
+          zh: string?
+          en: string?
+          # …其它 locale key
+        downloadUrl:                       # 可选；platform → url
+          android: string?
+          windows: string?
+          macos: string?
+          # …其它 platform key
+        platforms:                         # 可选 v2；缺省用顶层字段
+          ios:
+            minimumVersion: string?        # iOS 渠道最低版本覆盖
+          android:
+            googlePlay:
+              minimumVersion: string?
+              storeUrl: string?
+              fallbackUrl: string?
+            apk:
+              latestVersion: string?
+              minimumVersion: string?
+              downloadUrl: string?
 ```
 
 ---
