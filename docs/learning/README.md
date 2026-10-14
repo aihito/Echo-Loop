@@ -14,7 +14,9 @@
 | [1. 产品与跑通](#1-产品与跑通) | 知道 App 做什么，本地能跑 | 0.5～1 天 |
 | [1b. 术语小词典](#1b-术语小词典前端小白向) | 看懂 NDJSON / Dio / CDN 等黑话 | 随查 |
 | [2. 工程约定](#2-工程约定) | 知道怎么改代码、怎么验收 | 0.5 天 |
+| [Flutter 组件参考](./flutter-widgets.md) | 全量深写查阅手册（索引、约束、示例、选型） | 随查 |
 | [3. 骨架：启动 / 路由 / 壳](#3-骨架启动--路由--壳) | 懂页面怎么挂、壳内壳外 | 1～2 天 |
+| [架构读码报告](./architecture-reading-report.md) | how-to-read-code 整体架构横览（图 + 核心结构 + 验证标签） | 随查 |
 | [3b. 业务模型](#3b-业务模型) | 知道领域对象有哪些、和 DB 关系 | 0.5 天 |
 | [3c. 核心服务](#3c-核心服务) | 知道 `lib/services` 里有什么、干什么 | 0.5 天 |
 | [3d. 后端 API 契约](#3d-后端-api-契约) | 自家 HTTP 路径、参数、流式协议（对接/重写后端） | 0.5 天 |
@@ -78,6 +80,10 @@ Model = 业务数据；State = 界面运行态
 
 单向数据流：UI 触发动作 → controller 更新 state → UI 按 state 渲染。
 
+学 Flutter 基础组件（Scaffold、Row/Column、ListView、手势等）见：
+
+**[flutter-widgets.md](./flutter-widgets.md)**（全部条目深写：作用 / 适用 / 参数 / 示例 / 注意 / 官方；含索引与约束速查）
+
 ---
 
 ## 3. 骨架：启动 / 路由 / 壳
@@ -102,6 +108,10 @@ Model = 业务数据；State = 界面运行态
 - **嵌套子路由**：URL 带完整栈，避免 Android 重建后返回多退一层（见 CLAUDE.md §7.17）。
 
 回归参考：`test/router/app_router_test.dart`。
+
+读码报告（整体架构横览、主线/黑盒、`[verified]`/`[static]`）：
+
+**[architecture-reading-report.md](./architecture-reading-report.md)**
 
 ---
 
