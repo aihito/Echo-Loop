@@ -16,10 +16,13 @@ import 'package:echo_loop/models/sentence.dart';
 import 'package:echo_loop/models/retell_settings.dart';
 import 'package:echo_loop/models/speech_practice_models.dart';
 import 'package:echo_loop/screens/retell_player_screen.dart';
+import 'package:echo_loop/screens/sentence_detail_screen.dart';
 import 'package:echo_loop/providers/learning_settings_provider.dart';
 import 'package:echo_loop/providers/new_user_guide_provider.dart';
 import 'package:echo_loop/providers/listening_practice/listening_practice_provider.dart';
 import 'package:echo_loop/providers/audio_engine/audio_engine_provider.dart';
+import 'package:echo_loop/providers/audio_engine/foreground_audio_engine_provider.dart';
+import 'package:echo_loop/providers/audio_engine/foreground_sense_group_range_playback.dart';
 import 'package:echo_loop/providers/learning_progress_provider.dart';
 import 'package:echo_loop/providers/learning_session/learning_session_provider.dart';
 import 'package:echo_loop/providers/learning_session/retell_player_provider.dart';
@@ -237,6 +240,13 @@ void main() {
               audioItemId: audioId,
             );
           },
+          routes: [
+            GoRoute(
+              path: 'sentence-detail',
+              builder: (context, state) =>
+                  const Scaffold(body: Text('Sentence Detail')),
+            ),
+          ],
         ),
         GoRoute(
           path: '/paywall',
@@ -257,6 +267,9 @@ void main() {
           ),
         ),
         audioEngineProvider.overrideWith(() => TestAudioEngine()),
+        foregroundAudioEngineProvider.overrideWith(
+          () => TestForegroundAudioEngine(),
+        ),
         learningProgressNotifierProvider.overrideWith(
           () => TestLearningProgressNotifier(),
         ),
@@ -1255,6 +1268,55 @@ void main() {
       expect(trackingPlayer.lastStopImmediately, true);
       // 讲解入口不触发播放 seek
       expect(trackingPlayer.seekCalls, 0);
+    });
+
+    testWidgets('纯音频复述详情的播放与高亮来源都使用前台音频引擎', (tester) async {
+      final testParagraphs = createTestParagraphs();
+      final initialState = RetellPlayerState(
+        currentParagraphIndex: 0,
+        totalParagraphs: testParagraphs.length,
+        phase: RetellPhase.listening,
+        isPlaying: true,
+        playingSentenceIndex: 0,
+        displayMode: RetellDisplayMode.showAll,
+        settings: const RetellSettings(keywordMethod: KeywordMethod.random),
+      );
+      final trackingPlayer = _TrackingRetellPlayer(
+        initialState,
+        testParagraphs,
+        const {},
+      );
+
+      await tester.pumpWidget(
+        createTestWidget(
+          playerState: initialState,
+          paragraphs: testParagraphs,
+          playerFactory: (_, __, ___) => trackingPlayer,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(
+          const ValueKey('$kMaskedSentenceExplanationHitAreaKeyPrefix-0'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final detailContext = tester.element(find.text('Sentence Detail'));
+      final extra = GoRouterState.of(detailContext).extra;
+      expect(extra, isA<SentenceDetailArgs>());
+      if (extra case final SentenceDetailArgs args) {
+        final foregroundEngine = ProviderScope.containerOf(
+          detailContext,
+        ).read(foregroundAudioEngineProvider.notifier);
+        expect(args.rangePlayback, isA<ForegroundSenseGroupRangePlayback>());
+        expect(args.wordHighlightSource.audioItemId, 'a1');
+        expect(
+          args.wordHighlightSource.currentPosition,
+          foregroundEngine.absoluteCurrentPosition,
+        );
+      }
     });
 
     testWidgets('点击句子正文调用 seekToSentence（不进入讲解页）', (tester) async {

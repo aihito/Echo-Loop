@@ -475,6 +475,16 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
     );
   }
 
+  /// 为随心听字幕和句子详情提供共用的 MediaEngine 播放时间轴。
+  WordHighlightSource _wordHighlightSource(String audioItemId) {
+    final engine = ref.read(mediaEngineProvider.notifier);
+    return WordHighlightSource(
+      audioItemId: audioItemId,
+      positionStream: engine.positionStream,
+      currentPosition: engine.currentPosition,
+    );
+  }
+
   Widget _buildSentencePane(
     MediaPlaybackState state,
     List<Sentence> sentences,
@@ -489,12 +499,7 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
         ? state.bookmarkSettings
         : state.fullSettings;
     final audioItem = state.audioItem ?? widget.audioItem;
-    final mediaEngine = ref.read(mediaEngineProvider.notifier);
-    final wordHighlightSource = WordHighlightSource(
-      audioItemId: audioItem.id,
-      positionStream: mediaEngine.positionStream,
-      currentPosition: mediaEngine.currentPosition,
-    );
+    final wordHighlightSource = _wordHighlightSource(audioItem.id);
     final isBookmarkMode = mode == PlaylistMode.bookmarks;
     final showSingleSentence =
         settings.singleSentenceMode && currentSentenceIndex != null;
@@ -613,6 +618,7 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
           startTimeMs: sentence.startTime.inMilliseconds,
           endTimeMs: sentence.endTime.inMilliseconds,
           rangePlayback: controller.senseGroupRangePlayback,
+          wordHighlightSource: _wordHighlightSource(widget.audioItem.id),
           mediaSession: widget.audioItem.isVideo
               ? SentenceDetailMediaSession(
                   readState: () => ref.read(mediaPlaybackProvider),

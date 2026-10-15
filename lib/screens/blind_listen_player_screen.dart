@@ -232,6 +232,7 @@ class _BlindListenPlayerScreenState
         startTimeMs: sentence.startTime.inMilliseconds,
         endTimeMs: sentence.endTime.inMilliseconds,
         rangePlayback: usesMedia ? _blindMediaRangePlayback : null,
+        wordHighlightSource: _wordHighlightSource(),
         mediaSession: usesMedia ? _buildMediaSession() : null,
       ),
     );

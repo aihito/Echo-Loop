@@ -81,10 +81,9 @@ class SentenceDetailArgs {
   /// 句子结束时间（毫秒）
   final int endTimeMs;
 
-  /// 由媒体入口注入的区间播放器。
+  /// 由调用方注入的句子与意群区间播放器，绑定到当前学习会话的播放引擎。
   ///
-  /// 为空时继续使用既有音频讲解链路；非空时，句子与意群均必须在当前
-  /// `MediaEngine` 会话内播放，避免讲解页回退到全局 [AudioEngine]。
+  /// 为空时，详情页使用自己的音频播放逻辑。
   final SenseGroupRangePlayback? rangePlayback;
 
   /// 视频随心听注入的画面呈现能力。
@@ -92,6 +91,9 @@ class SentenceDetailArgs {
   /// 仅作为当前父级媒体会话的视图与全屏协调入口，不拥有、不加载也不释放
   /// `MediaEngine`。为空时讲解页保持原有纯音频布局。
   final SentenceDetailMediaSession? mediaSession;
+
+  /// 调用方当前实际使用的原音播放时间轴。
+  final WordHighlightSource wordHighlightSource;
 
   const SentenceDetailArgs({
     required this.audioItemId,
@@ -103,6 +105,7 @@ class SentenceDetailArgs {
     required this.endTimeMs,
     this.rangePlayback,
     this.mediaSession,
+    required this.wordHighlightSource,
   });
 }
 
@@ -354,10 +357,6 @@ class _SentenceDetailScreenState extends ConsumerState<SentenceDetailScreen> {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context)!;
     final args = widget.args;
-    final wordHighlightSource = args.mediaSession != null
-        ? _mediaWordHighlightSource(args.audioItemId)
-        : _audioWordHighlightSource(args.audioItemId);
-
     final durationMs = args.endTimeMs - args.startTimeMs;
     final durationSec = durationMs / 1000;
     final durationText = l10n.sentenceDuration(durationSec.toStringAsFixed(1));
@@ -442,7 +441,7 @@ class _SentenceDetailScreenState extends ConsumerState<SentenceDetailScreen> {
                         text: args.sentenceText,
                         aiNotifier: ref.read(sentenceAiNotifierProvider),
                         audioItemId: args.audioItemId,
-                        wordHighlightSource: wordHighlightSource,
+                        wordHighlightSource: args.wordHighlightSource,
                         sentenceIndex: args.sentenceIndex,
                         sentenceStartMs: args.startTimeMs,
                         sentenceEndMs: args.endTimeMs,
@@ -474,24 +473,6 @@ class _SentenceDetailScreenState extends ConsumerState<SentenceDetailScreen> {
                 ],
               ),
             ),
-    );
-  }
-
-  WordHighlightSource _audioWordHighlightSource(String audioItemId) {
-    final engine = ref.read(audioEngineProvider.notifier);
-    return WordHighlightSource(
-      audioItemId: audioItemId,
-      positionStream: engine.absolutePositionStream,
-      currentPosition: engine.absoluteCurrentPosition,
-    );
-  }
-
-  WordHighlightSource _mediaWordHighlightSource(String audioItemId) {
-    final engine = ref.read(mediaEngineProvider.notifier);
-    return WordHighlightSource(
-      audioItemId: audioItemId,
-      positionStream: engine.positionStream,
-      currentPosition: engine.currentPosition,
     );
   }
 

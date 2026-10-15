@@ -22,7 +22,9 @@ import '../database/providers.dart';
 import '../l10n/app_localizations.dart';
 import '../models/dict_entry.dart';
 import '../models/sentence.dart';
+import '../models/word_highlight_binding.dart';
 import '../screens/sentence_detail_screen.dart';
+import '../providers/audio_engine/audio_engine_provider.dart';
 import '../providers/short_audio_player_provider.dart';
 import '../providers/tts/tts_controller_provider.dart';
 import '../providers/pronunciation/pronunciation_providers.dart';
@@ -871,6 +873,10 @@ class _BookmarkSentenceTileState extends ConsumerState<_BookmarkSentenceTile> {
         sentenceIndex: bm.sentenceIndex,
         startTimeMs: (bm.startTime * 1000).round(),
         endTimeMs: (bm.endTime * 1000).round(),
+        wordHighlightSource: _audioEngineWordHighlightSource(
+          ref,
+          widget.audioId,
+        ),
       ),
     );
   }
@@ -1058,7 +1064,21 @@ Future<void> _openFavoriteSourceSentenceDetail({
       sentenceIndex: location.sentenceIndex,
       startTimeMs: location.startTimeMs,
       endTimeMs: location.endTimeMs,
+      wordHighlightSource: _audioEngineWordHighlightSource(ref, audioItemId),
     ),
+  );
+}
+
+/// 收藏详情页的句子试听由全局音频引擎播放，因此显式绑定该引擎的时间轴。
+WordHighlightSource _audioEngineWordHighlightSource(
+  WidgetRef ref,
+  String audioItemId,
+) {
+  final engine = ref.read(audioEngineProvider.notifier);
+  return WordHighlightSource(
+    audioItemId: audioItemId,
+    positionStream: engine.absolutePositionStream,
+    currentPosition: engine.absoluteCurrentPosition,
   );
 }
 

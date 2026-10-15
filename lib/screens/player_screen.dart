@@ -246,6 +246,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   ) {
     final l10n = AppLocalizations.of(context)!;
     final settings = playerState.fullSettings;
+    final audioItemId = playerState.currentAudioItem?.id;
 
     if (settings.singleSentenceMode) {
       if (playerState.currentFullIndex == null &&
@@ -288,9 +289,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           : RetellDisplayMode.hideAll,
       keywordMap: const {},
       playingSentenceIndex: playerState.currentFullIndex ?? -1,
-      wordHighlightSource: _wordHighlightSource(
-        playerState.currentAudioItem?.id,
-      ),
+      wordHighlightSource: audioItemId == null
+          ? null
+          : _wordHighlightSource(audioItemId),
       autoFocusEnabled: true,
       bookmarkedSentenceIndices: playerState.bookmarkedIndices,
       onSentencePlayFrom: (s) => controller.selectFullSentence(s.index),
@@ -306,6 +307,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final l10n = AppLocalizations.of(context)!;
     final bookmarkedSentences = playerState.bookmarkedSentences;
     final settings = playerState.bookmarkSettings;
+    final audioItemId = playerState.currentAudioItem?.id;
 
     if (bookmarkedSentences.isEmpty) {
       return Center(
@@ -391,9 +393,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           : RetellDisplayMode.hideAll,
       keywordMap: const {},
       playingSentenceIndex: playingLocalIndex,
-      wordHighlightSource: _wordHighlightSource(
-        playerState.currentAudioItem?.id,
-      ),
+      wordHighlightSource: audioItemId == null
+          ? null
+          : _wordHighlightSource(audioItemId),
       autoFocusEnabled: true,
       bookmarkedSentenceIndices: playerState.bookmarkedIndices,
       onSentencePlayFrom: (s) => controller.selectBookmarkedSentence(s.index),
@@ -443,8 +445,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
   }
 
-  WordHighlightSource? _wordHighlightSource(String? audioItemId) {
-    if (audioItemId == null) return null;
+  WordHighlightSource _wordHighlightSource(String audioItemId) {
     final engine = ref.read(audioEngineProvider.notifier);
     return WordHighlightSource(
       audioItemId: audioItemId,
@@ -491,6 +492,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         sentenceIndex: sentence.index,
         startTimeMs: sentence.startTime.inMilliseconds,
         endTimeMs: sentence.endTime.inMilliseconds,
+        wordHighlightSource: _wordHighlightSource(audioItem.id),
       ),
     );
     AppLogger.log(

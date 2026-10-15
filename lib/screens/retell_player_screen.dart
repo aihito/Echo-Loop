@@ -35,6 +35,7 @@ import '../providers/learning_session/learning_session_provider.dart';
 import '../providers/learning_session/retell_player_provider.dart';
 import '../providers/media_engine/media_engine_provider.dart';
 import '../providers/audio_engine/foreground_audio_engine_provider.dart';
+import '../providers/audio_engine/foreground_sense_group_range_playback.dart';
 import '../providers/media_engine/media_sense_group_range_playback.dart';
 import '../providers/new_user_guide_provider.dart';
 import '../widgets/common/recording_button.dart' show RecordingButtonMode;
@@ -1438,7 +1439,10 @@ class _RetellPlayerScreenState extends ConsumerState<RetellPlayerScreen>
             .totalSentenceCount,
         startTimeMs: sentence.startTime.inMilliseconds,
         endTimeMs: sentence.endTime.inMilliseconds,
-        rangePlayback: usesMedia ? _retellMediaRangePlayback : null,
+        rangePlayback: usesMedia
+            ? _retellMediaRangePlayback
+            : _retellAudioRangePlayback,
+        wordHighlightSource: _wordHighlightSource(),
         mediaSession: usesMedia ? _buildMediaSession() : null,
       ),
     );
@@ -1455,6 +1459,13 @@ class _RetellPlayerScreenState extends ConsumerState<RetellPlayerScreen>
   late final MediaSenseGroupRangePlayback _retellMediaRangePlayback =
       MediaSenseGroupRangePlayback(
         engine: ref.read(mediaEngineProvider.notifier),
+        playbackSpeed: () =>
+            ref.read(retellPlayerProvider).settings.playbackSpeed,
+      );
+
+  late final ForegroundSenseGroupRangePlayback _retellAudioRangePlayback =
+      ForegroundSenseGroupRangePlayback(
+        engine: ref.read(foregroundAudioEngineProvider.notifier),
         playbackSpeed: () =>
             ref.read(retellPlayerProvider).settings.playbackSpeed,
       );

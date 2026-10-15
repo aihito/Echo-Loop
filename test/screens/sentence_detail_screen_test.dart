@@ -1,4 +1,5 @@
 import 'package:echo_loop/database/providers.dart';
+import 'package:echo_loop/models/word_highlight_binding.dart';
 import 'package:echo_loop/models/sense_group_range_playback.dart';
 import 'package:echo_loop/models/media_playback_state.dart';
 import 'package:echo_loop/providers/media_engine/media_engine_provider.dart';
@@ -87,6 +88,11 @@ void main() {
             startTimeMs: 1000,
             endTimeMs: 3000,
             rangePlayback: rangePlayback,
+            wordHighlightSource: const WordHighlightSource(
+              audioItemId: 'media-item',
+              positionStream: Stream<Duration>.empty(),
+              currentPosition: Duration.zero,
+            ),
           ),
         ),
         overrides: detailOverrides(),
@@ -109,6 +115,40 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1));
   });
 
+  testWidgets('纯音频详情页使用调用方注入的高亮播放源', (tester) async {
+    final source = WordHighlightSource(
+      audioItemId: 'audio-item',
+      positionStream: const Stream<Duration>.empty(),
+      currentPosition: const Duration(milliseconds: 1500),
+    );
+    await tester.pumpWidget(
+      createTestApp(
+        SentenceDetailScreen(
+          args: SentenceDetailArgs(
+            audioItemId: 'audio-item',
+            audioName: 'Audio item',
+            sentenceText: 'A sentence for audio playback.',
+            sentenceIndex: 0,
+            startTimeMs: 1000,
+            endTimeMs: 3000,
+            wordHighlightSource: source,
+          ),
+        ),
+        overrides: detailOverrides(),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('media-visual-surface')), findsNothing);
+    final annotation = tester.widget<SentenceExplanationView>(
+      find.byType(SentenceExplanationView),
+    );
+    expect(annotation.wordHighlightSource, same(source));
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+  });
+
   testWidgets('详情页顶部信息行与讲解区使用相同水平边距', (tester) async {
     await tester.pumpWidget(
       createTestApp(
@@ -121,6 +161,11 @@ void main() {
             totalSentenceCount: 10,
             startTimeMs: 1000,
             endTimeMs: 3000,
+            wordHighlightSource: WordHighlightSource(
+              audioItemId: 'media-item',
+              positionStream: Stream<Duration>.empty(),
+              currentPosition: Duration.zero,
+            ),
           ),
         ),
         overrides: detailOverrides(),
@@ -158,6 +203,11 @@ void main() {
             totalSentenceCount: 10,
             startTimeMs: 1000,
             endTimeMs: 3000,
+            wordHighlightSource: WordHighlightSource(
+              audioItemId: 'audio-item',
+              positionStream: Stream<Duration>.empty(),
+              currentPosition: Duration.zero,
+            ),
           ),
         ),
         overrides: detailOverrides(),
@@ -196,6 +246,11 @@ void main() {
             startTimeMs: 1000,
             endTimeMs: 3000,
             rangePlayback: rangePlayback,
+            wordHighlightSource: const WordHighlightSource(
+              audioItemId: 'media-item',
+              positionStream: Stream<Duration>.empty(),
+              currentPosition: Duration.zero,
+            ),
             mediaSession: SentenceDetailMediaSession(
               readState: () => const MediaPlaybackState(),
               setVisible: mediaPlayback.setVisualTrackVisible,
@@ -271,6 +326,11 @@ void main() {
             sentenceIndex: 0,
             startTimeMs: 1000,
             endTimeMs: 3000,
+            wordHighlightSource: WordHighlightSource(
+              audioItemId: 'audio-item',
+              positionStream: Stream<Duration>.empty(),
+              currentPosition: Duration.zero,
+            ),
           ),
         ),
         overrides: detailOverrides(),

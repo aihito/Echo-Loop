@@ -19,6 +19,7 @@ import 'package:echo_loop/providers/favorite_sentence_lifecycle_provider.dart';
 import 'package:echo_loop/router/app_router.dart' show rootRouteObserver;
 import 'package:echo_loop/providers/sentence_ai_provider.dart';
 import 'package:echo_loop/screens/media_playback_screen.dart';
+import 'package:echo_loop/screens/sentence_detail_screen.dart';
 import 'package:echo_loop/services/media_session_router.dart';
 import 'package:echo_loop/services/sentence_ai_api_client.dart';
 import 'package:echo_loop/theme/app_theme.dart';
@@ -33,6 +34,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:echo_loop/services/app_logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -685,6 +687,47 @@ void main() {
     await releaseMediaPage(tester);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 6));
+  });
+
+  testMediaWidgets('纯音频随心听打开句子详情时传入 MediaEngine 高亮源', (tester) async {
+    final audioItem = AudioItem(
+      id: 'audio-screen',
+      name: 'Screen Audio',
+      audioPath: 'echo-loop-audio-screen.mp3',
+      addedDate: DateTime(2026, 7, 24),
+      transcriptSource: TranscriptSource.local,
+    );
+    audioItemDao.transcriptSrtStore['audio-screen'] =
+        '1\n00:00:01,000 --> 00:00:03,000\nFirst sentence.\n';
+
+    await tester.pumpWidget(
+      createTestScreen(
+        MediaPlaybackScreen(audioItem: audioItem),
+        overrides: mediaOverrides(withTranscript: true),
+      ),
+    );
+    await pumpMediaReady(tester, requireVideoView: false);
+
+    final card = tester.widget<ParagraphSentenceListCard>(
+      find.byType(ParagraphSentenceListCard),
+    );
+    card.onSentenceExplanationTap!(transcriptSentences.first);
+    await tester.pumpAndSettle();
+
+    final detailContext = tester.element(find.text('Sentence Detail'));
+    final extra = GoRouterState.of(detailContext).extra;
+    expect(extra, isA<SentenceDetailArgs>());
+    if (extra case final SentenceDetailArgs args) {
+      final container = ProviderScope.containerOf(detailContext);
+      final mediaEngine = container.read(mediaEngineProvider.notifier);
+      final source = args.wordHighlightSource;
+      expect(args.mediaSession, isNull);
+      expect(source.audioItemId, audioItem.id);
+      expect(source.currentPosition, mediaEngine.currentPosition);
+    }
+
+    Navigator.of(detailContext).pop();
+    await tester.pumpAndSettle();
   });
 
   testMediaWidgets('讲解页面隐藏期间不跟随，返回后无动画定位最新当前句', (tester) async {
