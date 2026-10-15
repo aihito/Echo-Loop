@@ -106,7 +106,12 @@ class LocalAudioClipPlaybackState {
 /// 只播放其音轨，且可在后台继续播放；需要视频画面、全屏或字幕 UI 时，应使用
 /// 前台 [MediaKitPlayerBackend] 和媒体呈现宿主，而不是此服务。
 class LocalAudioClipPlayer {
-  LocalAudioClipPlayer({AudioClipPlayerBackend? backend}) : _backend = backend;
+  LocalAudioClipPlayer({AudioClipPlayerBackend? backend}) : _backend = backend {
+    _positions = StreamController<Duration>.broadcast(
+      onListen: _attachPositionListener,
+      onCancel: _detachPositionListener,
+    );
+  }
 
   static AudioClipPlayerBackend _createDefaultBackend() {
     // 初始化失败必须向调用方返回失败且不缓存 backend，下一次播放才能重试。
@@ -115,12 +120,16 @@ class LocalAudioClipPlayer {
 
   AudioClipPlayerBackend? _backend;
   StreamSubscription<Duration>? _positionSubscription;
-  final StreamController<Duration> _positions =
-      StreamController<Duration>.broadcast();
+  Future<void> _pendingPositionCancellations = Future<void>.value();
+  late final StreamController<Duration> _positions;
 
-  AudioClipPlayerBackend _ensureBackend() {
-    final backend = _backend ??= _createDefaultBackend();
-    _positionSubscription ??= backend.positions.listen(
+  /// 有位置流订阅者时，将后端位置事件接入共享流。
+  void _attachPositionListener() {
+    final backend = _backend;
+    if (backend == null || _positionSubscription != null) {
+      return;
+    }
+    _positionSubscription = backend.positions.listen(
       (position) {
         if (!_positions.isClosed) _positions.add(position);
       },
@@ -128,6 +137,37 @@ class LocalAudioClipPlayer {
         if (!_positions.isClosed) _positions.addError(error, stackTrace);
       },
     );
+  }
+
+  /// 取消后端位置监听，并串行等待已经开始的取消操作。
+  void _detachPositionListener() {
+    final subscription = _positionSubscription;
+    _positionSubscription = null;
+    if (subscription != null) {
+      _pendingPositionCancellations = _pendingPositionCancellations.then((
+        _,
+      ) async {
+        try {
+          await subscription.cancel();
+        } catch (error, stackTrace) {
+          AppLogger.log(
+            'AudioClipPlayer',
+            'position listener cancel failed error=$error\n$stackTrace',
+          );
+        }
+      });
+    }
+  }
+
+  /// 等待当前及此前已取消的位置监听全部结束。
+  Future<void> _cancelPositionListeners() async {
+    _detachPositionListener();
+    await _pendingPositionCancellations;
+  }
+
+  AudioClipPlayerBackend _ensureBackend() {
+    final backend = _backend ??= _createDefaultBackend();
+    if (_positions.hasListener) _attachPositionListener();
     return backend;
   }
 
@@ -140,7 +180,7 @@ class LocalAudioClipPlayer {
   LocalAudioClipPlaybackState get state => _state;
   Stream<LocalAudioClipPlaybackState> get states => _states.stream;
 
-  /// 当前本地音频时间位置流；后端创建后会转发其位置事件。
+  /// 当前本地音频时间位置流；仅在有订阅者时监听并转发后端位置事件。
   Stream<Duration> get positionStream => _positions.stream;
 
   /// 当前本地音频绝对位置；后端尚未创建时为零。
@@ -293,7 +333,7 @@ class LocalAudioClipPlayer {
     _activePlayback?.finish(AudioPlaybackResult.cancelled);
     _activePlayback = null;
     _setState(const LocalAudioClipPlaybackState());
-    await _positionSubscription?.cancel();
+    await _cancelPositionListeners();
     await _backend?.dispose();
     await _positions.close();
     await _states.close();

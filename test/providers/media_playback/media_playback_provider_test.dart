@@ -423,18 +423,23 @@ void main() {
     expect(playbackStateDao.savedPositions, isEmpty);
   });
 
-  test('点击讲解前选中并暂停目标句，返回后同步收藏并复位媒体位置', () async {
+  test('点击讲解保持原焦点和位置，返回只同步收藏', () async {
     final controller = await loadController();
+    backend.emitPosition(const Duration(seconds: 47));
+    await Future<void>.delayed(Duration.zero);
     unawaited(controller.play());
     await Future<void>.delayed(Duration.zero);
+    final pauseCallsBefore = backend.pauseCalls;
 
-    await controller.prepareSentenceDetail(1);
+    final returnPosition = await controller.prepareSentenceDetail();
 
     var state = container.read(mediaPlaybackProvider);
-    expect(state.currentFullIndex, 1);
-    expect(state.position, const Duration(seconds: 60));
+    expect(returnPosition, const Duration(seconds: 47));
+    expect(state.currentFullIndex, 0);
+    expect(state.position, const Duration(seconds: 47));
     expect(state.isPlaying, isFalse);
-    expect(backend.pauseCalls, 1);
+    expect(backend.pauseCalls, greaterThan(pauseCallsBefore));
+    expect(backend.seekCalls, isEmpty);
 
     await bookmarkDao.addBookmark(
       const BookmarksCompanion(
@@ -442,14 +447,32 @@ void main() {
         sentenceIndex: Value(1),
       ),
     );
-    await controller.restoreAfterSentenceDetail();
+    await controller.restoreAfterSentenceDetail(returnPosition);
 
     state = container.read(mediaPlaybackProvider);
     expect(state.bookmarkedIndices, {1});
     expect(state.sentences[1].isBookmarked, isTrue);
-    expect(state.currentFullIndex, 1);
-    expect(state.position, const Duration(seconds: 60));
-    expect(backend.seekCalls.last, const Duration(seconds: 60));
+    expect(state.currentFullIndex, 0);
+    expect(state.position, const Duration(seconds: 47));
+    expect(backend.seekCalls, isEmpty);
+  });
+
+  test('讲解期间播放改变位置后返回恢复进入前的精确位置', () async {
+    final controller = await loadController();
+    backend.emitPosition(const Duration(seconds: 47));
+    await Future<void>.delayed(Duration.zero);
+
+    final returnPosition = await controller.prepareSentenceDetail();
+    backend.emitPosition(const Duration(seconds: 65));
+    await Future<void>.delayed(Duration.zero);
+
+    await controller.restoreAfterSentenceDetail(returnPosition);
+
+    final state = container.read(mediaPlaybackProvider);
+    expect(state.currentFullIndex, 0);
+    expect(state.position, const Duration(seconds: 47));
+    expect(backend.seekCalls, [const Duration(seconds: 47)]);
+    expect(state.isPlaying, isFalse);
   });
 
   test('空收藏不进入收藏模式，也不触发暂停和对齐', () async {
@@ -520,15 +543,19 @@ void main() {
     );
     final controller = await loadController();
     await controller.setPlaylistMode(PlaylistMode.bookmarks);
+    final returnPosition = await controller.prepareSentenceDetail();
+    final seekCallsBeforeReturn = backend.seekCalls.length;
     await bookmarkDao.removeBookmark('media-playback-test', 1);
 
-    await controller.restoreAfterSentenceDetail();
+    await controller.restoreAfterSentenceDetail(returnPosition);
 
     final state = container.read(mediaPlaybackProvider);
     expect(state.playlistMode, PlaylistMode.full);
     expect(state.currentFullIndex, 1);
     expect(state.currentBookmarkIndex, isNull);
     expect(state.bookmarkedSentences, isEmpty);
+    expect(state.position, returnPosition);
+    expect(backend.seekCalls.length, seekCallsBeforeReturn);
   });
 
   test('快速重复切换只执行一次暂停和位置对齐', () async {

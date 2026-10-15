@@ -37,10 +37,10 @@ import '../../providers/audio_sentences_provider.dart';
 import '../../providers/learning_settings_provider.dart';
 import '../../providers/sentence_ai_provider.dart';
 import '../../providers/settings_provider.dart';
+import '../../providers/word_highlight_provider.dart';
 import '../../providers/saved_sense_group_provider.dart';
 import '../../services/app_logger.dart';
 import '../../services/dictionary/ai_dictionary_source.dart';
-import '../../services/transcription_api_client.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/sense_group_service.dart';
 import '../../utils/sense_group_timing_notice_store.dart';
@@ -201,7 +201,13 @@ class _SentenceExplanationViewState
   final _sgService = SenseGroupService();
 
   // --- 意群数据状态 ---
-  List<WordTimestamp>? _wordTimestamps;
+  /// 与正文高亮组件共用同一份词级时间戳加载结果。
+  List<WordTimestamp>? get _wordTimestamps {
+    final audioItemId = widget.audioItemId;
+    if (audioItemId == null) return null;
+    return ref.read(wordTimestampsProvider(audioItemId)).valueOrNull;
+  }
+
   SenseGroupResult? _senseGroupResult;
   List<SenseGroupTiming>? _senseGroupTimings;
 
@@ -251,7 +257,6 @@ class _SentenceExplanationViewState
   @override
   void initState() {
     super.initState();
-    _fetchWordTimestamps();
     _preloadCache();
   }
 
@@ -280,8 +285,6 @@ class _SentenceExplanationViewState
     // 音频切换时重新加载词级时间戳
     if (widget.audioItemId != oldWidget.audioItemId) {
       _resetSenseGroups();
-      _wordTimestamps = null;
-      _fetchWordTimestamps();
     }
     if (_shouldResetScrollPosition(oldWidget)) {
       _resetScrollPosition();
@@ -319,22 +322,6 @@ class _SentenceExplanationViewState
       }
       _scrollController.jumpTo(0);
     });
-  }
-
-  /// 加载词级时间戳
-  Future<void> _fetchWordTimestamps() async {
-    final audioItemId = widget.audioItemId;
-    if (audioItemId == null) return;
-
-    final words = await _sgService.fetchWordTimestamps(
-      audioItemId: audioItemId,
-      dao: ref.read(audioItemDaoProvider),
-      api: ref.read(transcriptionApiClientProvider),
-      accessToken: ref.read(supabaseSessionProvider).valueOrNull?.accessToken,
-    );
-    if (mounted && widget.audioItemId == audioItemId) {
-      setState(() => _wordTimestamps = words);
-    }
   }
 
   /// 从共享字幕投影取当前句的前/后句文本（做翻译上下文）。
@@ -922,6 +909,13 @@ class _SentenceExplanationViewState
 
   @override
   Widget build(BuildContext context) {
+    final timestampAudioItemId = widget.audioItemId;
+    // 讲解页无论高亮开关状态都需要意群计时；正文高亮组件监听同一 provider，
+    // 因此两处共享一次时间戳加载。
+    final wordTimestamps = timestampAudioItemId == null
+        ? null
+        : ref.watch(wordTimestampsProvider(timestampAudioItemId)).valueOrNull;
+
     // 调用方可以显式注入测试或会话级 notifier；统一页面入口未注入时，
     // 必须回退到 Provider，避免工具栏请求回调为空而整组 AI 按钮被禁用。
     final ai = widget.aiNotifier ?? ref.read(sentenceAiNotifierProvider);
@@ -1201,7 +1195,7 @@ class _SentenceExplanationViewState
                 autoLoadSenseGroups:
                     shouldAutoLoadSentenceAi && autoShowAiSenseGroups,
                 onAwaitSenseGroupFine: _awaitSenseGroupFine,
-                hasWordTimestamps: _wordTimestamps != null,
+                hasWordTimestamps: wordTimestamps != null,
                 highlightedSegments: widget.highlightedSegments,
                 savedGroupTexts: savedTexts,
                 onTapGroupWithRect: _showActionBar,

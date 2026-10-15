@@ -12,7 +12,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets('播放设置中的逐词高亮开关默认关闭并保存选择', (tester) async {
+  testWidgets('播放设置中的逐词高亮开关默认开启并保存关闭选择', (tester) async {
     await tester.pumpWidget(
       createTestApp(
         const PlaybackSettingsScreen(),
@@ -30,13 +30,13 @@ void main() {
       final title = widget.title;
       return title is Text && title.data == 'Highlight Words During Playback';
     });
-    expect(tester.widget<SwitchListTile>(switchFinder).value, isFalse);
+    expect(tester.widget<SwitchListTile>(switchFinder).value, isTrue);
 
     await tester.tap(switchFinder);
     await tester.pumpAndSettle();
 
-    expect(tester.widget<SwitchListTile>(switchFinder).value, isTrue);
+    expect(tester.widget<SwitchListTile>(switchFinder).value, isFalse);
     final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getBool('word_highlight_enabled'), isTrue);
+    expect(prefs.getBool('word_highlight_enabled'), isFalse);
   });
 }

@@ -133,7 +133,7 @@ class AppSettingsState {
   /// 原生未合并分句（句子更短）。作为转录弹窗开关的默认值，记住用户上次选择。
   final bool aiTranscriptionAutoMergeEnabled;
 
-  /// 播放原音时高亮当前字幕词语（默认关闭）。
+  /// 播放原音时高亮当前字幕词语（默认开启）。
   final bool wordHighlightEnabled;
 
   const AppSettingsState({
@@ -147,7 +147,7 @@ class AppSettingsState {
     this.skipSilenceEnabled = true,
     this.silenceThresholdSeconds = silenceThresholdDefaultSeconds,
     this.aiTranscriptionAutoMergeEnabled = true,
-    this.wordHighlightEnabled = false,
+    this.wordHighlightEnabled = true,
   });
 
   AppSettingsState copyWith({
@@ -227,6 +227,8 @@ bool readInitialAiTranscriptionAutoMergeEnabledSync(SharedPreferences prefs) {
 
 @Riverpod(keepAlive: true)
 class AppSettings extends _$AppSettings {
+  bool _wordHighlightChangedByUser = false;
+
   @override
   AppSettingsState build() {
     // 用 main() 同步预读的首帧值，避免 locale 闪烁，以及转录弹窗在 hydrate 前
@@ -274,7 +276,7 @@ class AppSettings extends _$AppSettings {
     final aiTranscriptionAutoMergeEnabled =
         prefs.getBool(_aiTranscriptionAutoMergeEnabledKey) ?? true;
     final wordHighlightEnabled =
-        prefs.getBool(_wordHighlightEnabledKey) ?? false;
+        prefs.getBool(_wordHighlightEnabledKey) ?? true;
 
     state = state.copyWith(
       themeMode: themeMode,
@@ -287,7 +289,10 @@ class AppSettings extends _$AppSettings {
       skipSilenceEnabled: skipSilenceEnabled,
       silenceThresholdSeconds: silenceThresholdSeconds,
       aiTranscriptionAutoMergeEnabled: aiTranscriptionAutoMergeEnabled,
-      wordHighlightEnabled: wordHighlightEnabled,
+      // 用户在异步设置加载期间操作开关时，保留其即时选择。
+      wordHighlightEnabled: _wordHighlightChangedByUser
+          ? null
+          : wordHighlightEnabled,
     );
   }
 
@@ -423,8 +428,9 @@ class AppSettings extends _$AppSettings {
     await prefs.setBool(_skipSilenceEnabledKey, enabled);
   }
 
-  /// 设置播放原音时的字幕逐词高亮（默认关闭）。
+  /// 设置播放原音时的字幕逐词高亮（默认开启）。
   Future<void> setWordHighlightEnabled(bool enabled) async {
+    _wordHighlightChangedByUser = true;
     state = state.copyWith(wordHighlightEnabled: enabled);
 
     final prefs = await SharedPreferences.getInstance();

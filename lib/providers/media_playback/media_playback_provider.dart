@@ -836,29 +836,48 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
     }
   }
 
-  /// 进入句子讲解前，将媒体焦点对齐到目标句并保持暂停。
-  Future<void> prepareSentenceDetail(int index) async {
+  /// 进入句子讲解前暂停媒体，并记录暂停后的精确位置。
+  ///
+  /// 讲解页展示点选句子，但导航本身不改变随心听焦点或 seek；否则共享位置流会
+  /// 把句首 seek 解析成第一个词的逐词高亮。
+  Future<Duration> prepareSentenceDetail() async {
     AppLogger.log(
       'MediaPlayback',
-      'sentence detail prepare media=${state.audioItem?.id} index=$index',
+      'sentence detail prepare media=${state.audioItem?.id}',
     );
-    if (state.playlistMode == PlaylistMode.bookmarks) {
-      await selectBookmarkedSentence(index, autoPlay: false);
-    } else {
-      await selectFullSentence(index, autoPlay: false);
-    }
     await pause();
+    final position = _engine.currentPosition;
+    state = state.copyWith(position: position);
+    AppLogger.log(
+      'MediaPlayback',
+      'sentence detail paused position=${position.inMilliseconds}ms',
+    );
+    return position;
   }
 
-  /// 从句子讲解返回后，同步收藏状态并恢复当前媒体句的暂停位置。
-  Future<void> restoreAfterSentenceDetail() async {
+  /// 从句子讲解返回后同步收藏，并在讲解播放改变位置时恢复原播放位置。
+  ///
+  /// 只查看讲解时不 seek；返回也不根据当前句焦点重新对齐媒体位置。
+  Future<void> restoreAfterSentenceDetail(Duration returnPosition) async {
     final item = state.audioItem;
     if (item == null) return;
     AppLogger.log(
       'MediaPlayback',
       'sentence detail restore media=${item.id} '
-          'index=${state.playlistMode == PlaylistMode.bookmarks ? state.currentBookmarkIndex : state.currentFullIndex}',
+          'position=${returnPosition.inMilliseconds}ms',
     );
+
+    // 讲解页可能使用共享媒体引擎播放句子或意群；先暂停并使其在途回调失效。
+    await pause();
+    final currentPosition = _engine.currentPosition;
+    if (currentPosition != returnPosition) {
+      await _engine.seek(returnPosition);
+      final restoredPosition = _engine.currentPosition;
+      _resetGaplessStatsPosition(restoredPosition);
+      state = state.copyWith(position: restoredPosition);
+    } else if (state.position != currentPosition) {
+      state = state.copyWith(position: currentPosition);
+    }
 
     final bookmarkedIndices = await BookmarkManager.loadBookmarks(
       item.id,
@@ -886,7 +905,6 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
       sentenceFocusReason: SentenceFocusReason.immediate,
     );
     _ensureValidIndex();
-    await _alignEngineToCurrent();
   }
 
   Future<void> _moveToPosition(int pos) async {

@@ -10,6 +10,7 @@ class _FakeBackend implements AudioClipPlayerBackend {
   final completedController = StreamController<void>.broadcast();
   final errorController = StreamController<String>.broadcast();
   final positionController = StreamController<Duration>.broadcast();
+  final firstOpen = Completer<void>();
   final opened = <String>[];
   final openedStarts = <Duration>[];
   Duration currentPosition = Duration.zero;
@@ -26,6 +27,7 @@ class _FakeBackend implements AudioClipPlayerBackend {
   @override
   Future<void> open(String filePath, {Duration start = Duration.zero}) async {
     opened.add(filePath);
+    if (!firstOpen.isCompleted) firstOpen.complete();
     openedStarts.add(start);
     currentPosition = start;
     if (completeOnOpen) completedController.add(null);
@@ -84,6 +86,19 @@ void main() {
       await player.playFile('/audio/broken.opus'),
       AudioPlaybackResult.failed,
     );
+    await player.dispose();
+  });
+
+  test('无位置流订阅者时不监听后端位置事件', () async {
+    final backend = _FakeBackend();
+    final player = LocalAudioClipPlayer(backend: backend);
+    final playback = player.playFile('/audio/read.opus');
+    await backend.firstOpen.future;
+
+    expect(backend.positionController.hasListener, isFalse);
+
+    backend.completedController.add(null);
+    expect(await playback, AudioPlaybackResult.completed);
     await player.dispose();
   });
 

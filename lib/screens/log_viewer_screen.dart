@@ -75,6 +75,7 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
   bool _didLogDeviceInfo = false;
   var _persistedEntries = const <LogEntry>[];
   var _displayedEntries = const <LogEntry>[];
+  var _logUpdateScheduled = false;
 
   @override
   void initState() {
@@ -100,13 +101,19 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
   }
 
   void _onLogUpdated() {
-    if (!mounted) return;
-    setState(_mergePersistedAndCurrentEntries);
+    if (!mounted || _logUpdateScheduled) return;
+    _logUpdateScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
-      }
+      _logUpdateScheduled = false;
+      if (!mounted) return;
+      setState(_mergePersistedAndCurrentEntries);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _scrollController.hasClients) {
+          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+        }
+      });
     });
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   /// 日志页打开后才读取跨启动历史；内存日志继续用于实时刷新。

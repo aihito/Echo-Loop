@@ -689,7 +689,7 @@ void main() {
     await tester.pump(const Duration(seconds: 6));
   });
 
-  testMediaWidgets('纯音频随心听打开句子详情时传入 MediaEngine 高亮源', (tester) async {
+  testMediaWidgets('sparkle 打开非当前句讲解时不 seek 或改变随心听焦点', (tester) async {
     final audioItem = AudioItem(
       id: 'audio-screen',
       name: 'Screen Audio',
@@ -711,23 +711,32 @@ void main() {
     final card = tester.widget<ParagraphSentenceListCard>(
       find.byType(ParagraphSentenceListCard),
     );
-    card.onSentenceExplanationTap!(transcriptSentences.first);
+    final screenContext = tester.element(find.byType(MediaPlaybackScreen));
+    final container = ProviderScope.containerOf(screenContext);
+    expect(container.read(mediaPlaybackProvider).currentFullIndex, 0);
+    card.onSentenceExplanationTap!(transcriptSentences.last);
     await tester.pumpAndSettle();
 
     final detailContext = tester.element(find.text('Sentence Detail'));
     final extra = GoRouterState.of(detailContext).extra;
     expect(extra, isA<SentenceDetailArgs>());
     if (extra case final SentenceDetailArgs args) {
-      final container = ProviderScope.containerOf(detailContext);
       final mediaEngine = container.read(mediaEngineProvider.notifier);
       final source = args.wordHighlightSource;
       expect(args.mediaSession, isNull);
+      expect(args.sentenceIndex, 1);
       expect(source.audioItemId, audioItem.id);
       expect(source.currentPosition, mediaEngine.currentPosition);
+      expect(source.currentPosition, Duration.zero);
     }
+    expect(backend.seekCalls, isEmpty);
+    expect(container.read(mediaPlaybackProvider).currentFullIndex, 0);
 
     Navigator.of(detailContext).pop();
     await tester.pumpAndSettle();
+    expect(backend.seekCalls, isEmpty);
+    expect(container.read(mediaPlaybackProvider).currentFullIndex, 0);
+    expect(container.read(mediaPlaybackProvider).position, Duration.zero);
   });
 
   testMediaWidgets('讲解页面隐藏期间不跟随，返回后无动画定位最新当前句', (tester) async {

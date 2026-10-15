@@ -24,6 +24,24 @@ class _FakePathProvider extends PathProviderPlatform {
   Future<String?> getTemporaryPath() async => tempPath;
 }
 
+class _LogDuringBuild extends StatefulWidget {
+  const _LogDuringBuild();
+
+  @override
+  State<_LogDuringBuild> createState() => _LogDuringBuildState();
+}
+
+class _LogDuringBuildState extends State<_LogDuringBuild> {
+  @override
+  void initState() {
+    super.initState();
+    AppLogger.log('Build', 'during sibling build');
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -124,8 +142,26 @@ void main() {
       AppLogger.log('Live', 'line-$index');
     }
     await tester.pump();
+    await tester.pump();
 
     expect(find.text('日志（最近 500 条）'), findsOneWidget);
+  });
+
+  testWidgets('其他路由构建期间追加日志不会同步刷新本页', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Stack(
+          children: [
+            Positioned.fill(child: LogViewerScreen()),
+            _LogDuringBuild(),
+          ],
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.textContaining('during sibling build'), findsOneWidget);
   });
 
   testWidgets('点击分享导出包含设备信息和日志内容的 ZIP 支持包', (tester) async {

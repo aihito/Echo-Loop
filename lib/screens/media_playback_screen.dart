@@ -598,7 +598,7 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
     final controller = ref.read(mediaPlaybackProvider.notifier);
 
     try {
-      await controller.prepareSentenceDetail(sentence.index);
+      final returnPosition = await controller.prepareSentenceDetail();
       if (!mounted) return;
 
       AppLogger.log(
@@ -640,7 +640,7 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
             'audio=${widget.audioItem.id} sentence=${sentence.index}',
       );
       final modeBeforeRestore = ref.read(mediaPlaybackProvider).playlistMode;
-      await controller.restoreAfterSentenceDetail();
+      await controller.restoreAfterSentenceDetail(returnPosition);
       if (mounted &&
           modeBeforeRestore == PlaylistMode.bookmarks &&
           ref.read(mediaPlaybackProvider).playlistMode == PlaylistMode.full) {
