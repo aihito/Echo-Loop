@@ -81,6 +81,9 @@ class SelectableSentenceText extends ConsumerStatefulWidget {
   /// 高亮片段（跟读评分染色）；非空时渲染文本 = 片段拼接
   final List<SpeechTranscriptSegment>? highlightedSegments;
 
+  /// 当前播放词在句内的序号；null 时不显示播放高亮。
+  final int? activeWordIndex;
+
   /// 查词来源上下文（收藏溯源）
   final DictionaryLookupOrigin origin;
 
@@ -93,6 +96,7 @@ class SelectableSentenceText extends ConsumerStatefulWidget {
     required this.text,
     this.style,
     this.highlightedSegments,
+    this.activeWordIndex,
     this.origin = const DictionaryLookupOrigin(),
     this.onBeforeLookup,
   });
@@ -347,10 +351,13 @@ class _SelectableSentenceTextState
     final colorAt = _segmentColorLookup();
     final text = _fullText;
     final spans = <InlineSpan>[];
+    var wordIndex = 0;
     for (final t in _tokens) {
       // token 颜色按其起点判定（与旧版整 token 染色一致），
       // 收藏掩码只切分下划线子段，不改变染色粒度
       final color = colorAt(t.start);
+      final isActiveWord = t.isWord && wordIndex == widget.activeWordIndex;
+      if (t.isWord) wordIndex++;
       for (final (subStart, subEnd, saved) in splitByMask(
         t.start,
         t.end,
@@ -361,6 +368,9 @@ class _SelectableSentenceTextState
             text: text.substring(subStart, subEnd),
             style: TextStyle(
               color: color,
+              backgroundColor: isActiveWord
+                  ? AppTheme.wordHighlightBackgroundColor(theme.colorScheme)
+                  : null,
               decoration: saved ? TextDecoration.underline : null,
               decorationStyle: saved ? TextDecorationStyle.dotted : null,
               decorationColor: saved ? savedColor : null,

@@ -114,9 +114,21 @@ class LocalAudioClipPlayer {
   }
 
   AudioClipPlayerBackend? _backend;
+  StreamSubscription<Duration>? _positionSubscription;
+  final StreamController<Duration> _positions =
+      StreamController<Duration>.broadcast();
 
   AudioClipPlayerBackend _ensureBackend() {
-    return _backend ??= _createDefaultBackend();
+    final backend = _backend ??= _createDefaultBackend();
+    _positionSubscription ??= backend.positions.listen(
+      (position) {
+        if (!_positions.isClosed) _positions.add(position);
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (!_positions.isClosed) _positions.addError(error, stackTrace);
+      },
+    );
+    return backend;
   }
 
   int _sessionId = 0;
@@ -127,6 +139,12 @@ class LocalAudioClipPlayer {
 
   LocalAudioClipPlaybackState get state => _state;
   Stream<LocalAudioClipPlaybackState> get states => _states.stream;
+
+  /// 当前本地音频时间位置流；后端创建后会转发其位置事件。
+  Stream<Duration> get positionStream => _positions.stream;
+
+  /// 当前本地音频绝对位置；后端尚未创建时为零。
+  Duration get currentPosition => _backend?.position ?? Duration.zero;
 
   /// 播放文件直到完成。新播放或 [stop] 会使旧请求返回 [AudioPlaybackResult.cancelled]。
   Future<AudioPlaybackResult> playFile(
@@ -275,7 +293,9 @@ class LocalAudioClipPlayer {
     _activePlayback?.finish(AudioPlaybackResult.cancelled);
     _activePlayback = null;
     _setState(const LocalAudioClipPlaybackState());
+    await _positionSubscription?.cancel();
     await _backend?.dispose();
+    await _positions.close();
     await _states.close();
   }
 

@@ -54,6 +54,12 @@ class AppTheme {
       ? Colors.orange.shade300
       : Colors.orange.shade400;
 
+  /// 当前播放词的底色：用明显的绿色区分当前播放位置，同时保持文字易读。
+  static Color wordHighlightBackgroundColor(ColorScheme colorScheme) =>
+      colorScheme.brightness == Brightness.dark
+      ? const Color(0xFF245D35)
+      : const Color(0xFFBCE7C6);
+
   /// 语义色：成功/完成（用于完成对话框的勾选徽章，清新绿）
   static const Color successColor = Color(0xFF2E9E5B);
 

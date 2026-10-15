@@ -25,6 +25,7 @@ import '../models/media_playback_state.dart';
 import '../models/retell_settings.dart';
 import '../models/sentence.dart';
 import '../models/speech_practice_models.dart';
+import '../models/word_highlight_binding.dart';
 import '../providers/learning_plan_provider.dart';
 import '../providers/learning_progress_provider.dart';
 import '../providers/learning_settings_provider.dart';
@@ -33,6 +34,7 @@ import '../providers/listening_practice/listening_practice_provider.dart';
 import '../providers/learning_session/learning_session_provider.dart';
 import '../providers/learning_session/retell_player_provider.dart';
 import '../providers/media_engine/media_engine_provider.dart';
+import '../providers/audio_engine/foreground_audio_engine_provider.dart';
 import '../providers/media_engine/media_sense_group_range_playback.dart';
 import '../providers/new_user_guide_provider.dart';
 import '../widgets/common/recording_button.dart' show RecordingButtonMode;
@@ -1457,6 +1459,23 @@ class _RetellPlayerScreenState extends ConsumerState<RetellPlayerScreen>
             ref.read(retellPlayerProvider).settings.playbackSpeed,
       );
 
+  WordHighlightSource _wordHighlightSource() {
+    if (widget.mediaStartup != null && _mediaStartupReady) {
+      final engine = ref.read(mediaEngineProvider.notifier);
+      return WordHighlightSource(
+        audioItemId: widget.audioItemId,
+        positionStream: engine.positionStream,
+        currentPosition: engine.currentPosition,
+      );
+    }
+    final engine = ref.read(foregroundAudioEngineProvider.notifier);
+    return WordHighlightSource(
+      audioItemId: widget.audioItemId,
+      positionStream: engine.absolutePositionStream,
+      currentPosition: engine.absoluteCurrentPosition,
+    );
+  }
+
   SentenceDetailMediaSession? _buildMediaSession() {
     final session = _mediaPresentationSession;
     if (session == null) return null;
@@ -1649,6 +1668,7 @@ class _RetellPlayerScreenState extends ConsumerState<RetellPlayerScreen>
                     playingSentenceIndex: state.phase == RetellPhase.listening
                         ? state.playingSentenceIndex
                         : -1,
+                    wordHighlightSource: _wordHighlightSource(),
                     bookmarkedSentenceIndices: state.bookmarkedSentenceIndices,
                     onSentenceExplanationTap: _handleSentenceDetail,
                     onSentencePlayFrom: _handleSentencePlayFrom,

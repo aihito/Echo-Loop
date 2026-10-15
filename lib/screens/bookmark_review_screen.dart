@@ -13,8 +13,10 @@ import '../features/memory_scheduler/domain/memory_scheduler_results.dart';
 import '../features/scheduled_flashcard/widgets/flashcard_rating_action_bar.dart';
 import '../l10n/app_localizations.dart';
 import '../models/bookmark_sentence.dart';
+import '../models/word_highlight_binding.dart';
 import '../providers/audio_engine/foreground_audio_engine_provider.dart';
 import '../providers/favorite_review_settings_provider.dart';
+import '../providers/short_audio_player_provider.dart';
 import '../providers/audio_engine/foreground_sense_group_range_playback.dart';
 import '../providers/learning_session/bookmark_review_provider.dart';
 import '../providers/sentence_ai_provider.dart';
@@ -620,6 +622,15 @@ class _ReviewAnswer extends ConsumerWidget {
               sentenceIndex: card.originalSentenceIndex,
               sentenceStartMs: card.sentence.startTime.inMilliseconds,
               sentenceEndMs: card.sentence.endTime.inMilliseconds,
+              wordHighlightSource: WordHighlightSource(
+                audioItemId: card.audioItemId,
+                positionStream: ref
+                    .read(shortAudioPlayerProvider)
+                    .positionStream,
+                currentPosition: ref
+                    .read(shortAudioPlayerProvider)
+                    .currentPosition,
+              ),
               senseGroupRangePlayback: ref.read(
                 senseGroupRangePlaybackProvider,
               ),

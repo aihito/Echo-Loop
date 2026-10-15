@@ -20,6 +20,7 @@ import '../database/enums.dart';
 import '../features/chatbot/widgets/sentence_chat_button.dart';
 import '../models/intensive_listen_settings.dart';
 import '../models/media_learning_startup.dart';
+import '../models/word_highlight_binding.dart';
 import '../utils/wakelock_mixin.dart';
 import '../utils/playback_speed.dart';
 import '../l10n/app_localizations.dart';
@@ -32,6 +33,8 @@ import '../providers/listen_and_repeat/listen_and_repeat_controller.dart';
 import '../providers/listen_and_repeat/listen_and_repeat_phase.dart';
 import '../providers/listen_and_repeat/listen_and_repeat_settings_provider.dart';
 import '../providers/listen_and_repeat/listen_and_repeat_session_state.dart';
+import '../providers/audio_engine/foreground_audio_engine_provider.dart';
+import '../providers/media_engine/media_engine_provider.dart';
 import '../providers/repeat_flow/repeat_flow_state.dart';
 import '../providers/sentence_ai_provider.dart';
 import '../services/app_logger.dart';
@@ -81,6 +84,23 @@ class ListenAndRepeatPlayerScreen extends ConsumerStatefulWidget {
 class _ListenAndRepeatPlayerScreenState
     extends ConsumerState<ListenAndRepeatPlayerScreen>
     with WakelockMixin {
+  WordHighlightSource _wordHighlightSource(bool usesMediaEngine) {
+    if (usesMediaEngine) {
+      final engine = ref.read(mediaEngineProvider.notifier);
+      return WordHighlightSource(
+        audioItemId: widget.audioItemId,
+        positionStream: engine.positionStream,
+        currentPosition: engine.currentPosition,
+      );
+    }
+    final engine = ref.read(foregroundAudioEngineProvider.notifier);
+    return WordHighlightSource(
+      audioItemId: widget.audioItemId,
+      positionStream: engine.absolutePositionStream,
+      currentPosition: engine.absoluteCurrentPosition,
+    );
+  }
+
   /// 是否正在退出页面，防止退出过程中 listener 触发弹窗
   bool _isExiting = false;
 
@@ -691,6 +711,11 @@ class _ListenAndRepeatPlayerScreenState
                                     final isActive =
                                         sentenceIndex ==
                                         ctrlState.sentenceIndex;
+                                    final wordHighlightSource = isActive
+                                        ? _wordHighlightSource(
+                                            ctrlState.usesMediaEngine,
+                                          )
+                                        : null;
                                     return Column(
                                       children: [
                                         Expanded(
@@ -700,6 +725,8 @@ class _ListenAndRepeatPlayerScreenState
                                               sentenceAiNotifierProvider,
                                             ),
                                             audioItemId: widget.audioItemId,
+                                            wordHighlightSource:
+                                                wordHighlightSource,
                                             sentenceIndex: sentence.index,
                                             sentenceStartMs: sentence
                                                 .startTime

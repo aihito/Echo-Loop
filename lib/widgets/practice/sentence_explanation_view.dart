@@ -31,6 +31,7 @@ import '../../models/sense_group_range_playback.dart';
 import '../../models/sentence.dart';
 import '../../models/speech_practice_models.dart';
 import '../../models/word_timestamp.dart';
+import '../../models/word_highlight_binding.dart';
 import '../../providers/audio_engine/audio_engine_provider.dart';
 import '../../providers/audio_sentences_provider.dart';
 import '../../providers/learning_settings_provider.dart';
@@ -73,6 +74,9 @@ class SentenceExplanationView extends ConsumerStatefulWidget {
 
   /// 来源音频 ID（用于加载词级时间戳 + 词典弹窗）
   final String? audioItemId;
+
+  /// 当前任务使用的原音播放位置来源；为空时只显示普通句子文本。
+  final WordHighlightSource? wordHighlightSource;
 
   /// 当前句子索引
   final int? sentenceIndex;
@@ -128,6 +132,7 @@ class SentenceExplanationView extends ConsumerStatefulWidget {
     this.text,
     this.aiNotifier,
     this.audioItemId,
+    this.wordHighlightSource,
     this.sentenceIndex,
     this.sentenceStartMs,
     this.sentenceEndMs,
@@ -160,6 +165,18 @@ class _SentenceExplanationViewState
       widget.explanationContext?.source ?? widget.diagnosticSource;
   String? get _diagnosticFlowPhase =>
       widget.explanationContext?.flowPhase ?? widget.diagnosticFlowPhase;
+
+  WordHighlightBinding? get _wordHighlightBinding {
+    final source = widget.wordHighlightSource;
+    final startMs = _sentenceStartMs;
+    final endMs = _sentenceEndMs;
+    if (source == null || startMs == null || endMs == null) return null;
+    return WordHighlightBinding(
+      source: source,
+      sentenceStartMs: startMs,
+      sentenceEndMs: endMs,
+    );
+  }
 
   /// 用于访问卡片 State 以构建外部工具栏
   GlobalKey<SentenceAnnotationCardState> _cardKey =
@@ -1058,6 +1075,7 @@ class _SentenceExplanationViewState
               content: SentenceAnnotationCard(
                 key: _cardKey,
                 text: _text,
+                wordHighlightBinding: _wordHighlightBinding,
                 contentHorizontalPadding: widget.contentHorizontalPadding,
                 showToolbar: false,
                 onToolbarStateChanged: _toolbarNotifier.notify,

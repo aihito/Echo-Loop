@@ -12,6 +12,7 @@ void main() {
 
         expect(state.themeMode, ThemeMode.system);
         expect(state.locale, isNull);
+        expect(state.wordHighlightEnabled, isFalse);
       });
     });
 
@@ -153,6 +154,33 @@ void main() {
       final state = container.read(appSettingsProvider);
       expect(state.isDemoMode, isFalse);
       expect(state.isDemoModeLoading, isFalse);
+    });
+
+    test('逐词高亮默认为关闭并可持久化', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final notifier = container.read(appSettingsProvider.notifier);
+      expect(container.read(appSettingsProvider).wordHighlightEnabled, isFalse);
+
+      await notifier.setWordHighlightEnabled(true);
+
+      expect(container.read(appSettingsProvider).wordHighlightEnabled, isTrue);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('word_highlight_enabled'), isTrue);
+    });
+
+    test('加载已保存的逐词高亮设置', () async {
+      SharedPreferences.setMockInitialValues({'word_highlight_enabled': true});
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      container.read(appSettingsProvider);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(container.read(appSettingsProvider).wordHighlightEnabled, isTrue);
     });
 
     test('setDemoMode(true) 更新状态并持久化到 SP', () async {

@@ -17,6 +17,7 @@ import '../../providers/saved_word_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/saved_text_index.dart';
 import '../../utils/sense_group_timing.dart';
+import '../../utils/text_normalize.dart';
 import '../common/text_context_menu.dart';
 import 'sentence_word_selection.dart';
 
@@ -25,6 +26,7 @@ const _matchedColor = Color(0xFF2E9B51);
 
 /// 提取英文单词（与 [SpeechTranscriptMatcher] 规则一致，保留撇号）
 final _englishWordPattern = RegExp(r"[A-Za-z]+(?:'[A-Za-z]+)?");
+final _playbackWordPattern = RegExp(r'\S+');
 
 /// 意群 badge 空闲态背景色（亮色主题）
 ///
@@ -86,6 +88,9 @@ class SenseGroupText extends ConsumerStatefulWidget {
   /// 为 null 或空时不做单词高亮，意群 badge 用纯文本渲染。
   final List<SpeechTranscriptSegment>? highlightedSegments;
 
+  /// 当前原音播放词在整句中的序号；null 时不显示播放高亮。
+  final int? activeWordIndex;
+
   const SenseGroupText({
     super.key,
     required this.chunks,
@@ -96,6 +101,7 @@ class SenseGroupText extends ConsumerStatefulWidget {
     this.onTapGroupWithRect,
     this.savedGroupTexts = const {},
     this.highlightedSegments,
+    this.activeWordIndex,
   });
 
   @override
@@ -191,15 +197,21 @@ class _SenseGroupTextState extends ConsumerState<SenseGroupText> {
     List<bool> mask,
     Color savedColor, {
     Color? color,
+    bool isActiveWord = false,
   }) {
     return [
       for (final (subStart, subEnd, saved) in splitByMask(start, end, mask))
         TextSpan(
           text: text.substring(subStart, subEnd),
-          style: (color == null && !saved)
+          style: (color == null && !saved && !isActiveWord)
               ? null
               : TextStyle(
                   color: color,
+                  backgroundColor: isActiveWord
+                      ? AppTheme.wordHighlightBackgroundColor(
+                          Theme.of(context).colorScheme,
+                        )
+                      : null,
                   decoration: saved ? TextDecoration.underline : null,
                   decorationStyle: saved ? TextDecorationStyle.dotted : null,
                   decorationColor: saved ? savedColor : null,
@@ -236,27 +248,47 @@ class _SenseGroupTextState extends ConsumerState<SenseGroupText> {
     Color savedColor,
   ) {
     final wordFlags = _buildWordFlags();
-    if (wordFlags == null) {
+    if (wordFlags == null && widget.activeWordIndex == null) {
       return null;
     }
 
     var wordCursor = 0;
+    var playbackWordCursor = 0;
     final result = <List<InlineSpan>>[];
     for (var ci = 0; ci < widget.chunks.length; ci++) {
       final text = widget.chunks[ci].trim();
       final mask = savedMasks[ci];
       final spans = <InlineSpan>[];
+      final activeMask = List<bool>.filled(text.length, false);
+      for (final match in _playbackWordPattern.allMatches(text)) {
+        final token = match.group(0) ?? '';
+        if (normalizeWord(token).isEmpty) continue;
+        if (playbackWordCursor == widget.activeWordIndex) {
+          for (var offset = match.start; offset < match.end; offset++) {
+            activeMask[offset] = true;
+          }
+        }
+        playbackWordCursor++;
+      }
       // 与普通模式一致：只给纯英文单词上色，单词外字符（空格/标点/连字符）原样保留
       var last = 0;
       for (final match in _englishWordPattern.allMatches(text)) {
         if (match.start > last) {
           spans.addAll(
-            _savedAwareSpans(text, last, match.start, mask, savedColor),
+            _savedAwareSpans(
+              text,
+              last,
+              match.start,
+              mask,
+              savedColor,
+              isActiveWord: activeMask[last],
+            ),
           );
         }
         // 按单词顺序消费匹配标志，越界按未匹配处理
         final isMatched =
-            wordCursor < wordFlags.length && wordFlags[wordCursor];
+            wordCursor < (wordFlags?.length ?? 0) &&
+            (wordFlags?[wordCursor] ?? false);
         wordCursor++;
         spans.addAll(
           _savedAwareSpans(
@@ -266,13 +298,21 @@ class _SenseGroupTextState extends ConsumerState<SenseGroupText> {
             mask,
             savedColor,
             color: isMatched ? _matchedColor : null,
+            isActiveWord: activeMask[match.start],
           ),
         );
         last = match.end;
       }
       if (last < text.length) {
         spans.addAll(
-          _savedAwareSpans(text, last, text.length, mask, savedColor),
+          _savedAwareSpans(
+            text,
+            last,
+            text.length,
+            mask,
+            savedColor,
+            isActiveWord: activeMask[last],
+          ),
         );
       }
       result.add(spans);

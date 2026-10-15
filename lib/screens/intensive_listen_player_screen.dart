@@ -14,6 +14,7 @@ import 'package:go_router/go_router.dart';
 import '../router/app_router.dart';
 import '../database/enums.dart';
 import '../models/media_learning_startup.dart';
+import '../models/word_highlight_binding.dart';
 import '../utils/playback_speed.dart';
 import '../utils/wakelock_mixin.dart';
 import '../utils/difficulty_from_ratio.dart';
@@ -23,6 +24,8 @@ import '../l10n/app_localizations.dart';
 import '../providers/learning_plan_provider.dart';
 import '../providers/learning_progress_provider.dart';
 import '../providers/learning_session/intensive_listen_player_provider.dart';
+import '../providers/audio_engine/audio_engine_provider.dart';
+import '../providers/media_engine/media_engine_provider.dart';
 import '../providers/learning_session/learning_session_provider.dart';
 import '../providers/intensive_annotation/intensive_annotation_phase.dart';
 import '../providers/sentence_ai_provider.dart';
@@ -77,6 +80,23 @@ class IntensiveListenPlayerScreen extends ConsumerStatefulWidget {
 class _IntensiveListenPlayerScreenState
     extends ConsumerState<IntensiveListenPlayerScreen>
     with WakelockMixin {
+  WordHighlightSource _wordHighlightSource(bool usesMediaEngine) {
+    if (usesMediaEngine) {
+      final engine = ref.read(mediaEngineProvider.notifier);
+      return WordHighlightSource(
+        audioItemId: widget.audioItemId,
+        positionStream: engine.positionStream,
+        currentPosition: engine.currentPosition,
+      );
+    }
+    final engine = ref.read(audioEngineProvider.notifier);
+    return WordHighlightSource(
+      audioItemId: widget.audioItemId,
+      positionStream: engine.absolutePositionStream,
+      currentPosition: engine.absoluteCurrentPosition,
+    );
+  }
+
   /// 逐句精听的横向分页控制器。
   ///
   /// 由页面持有并在 dispose 释放；用户滑动和播放器自动切句都通过它呈现同一套过渡。
@@ -758,6 +778,22 @@ class _IntensiveListenPlayerScreenState
                                     final isActivePage =
                                         sentenceIndex ==
                                         playerState.currentSentenceIndex;
+                                    final wordHighlightSource = isActivePage
+                                        ? _wordHighlightSource(
+                                            playerState.usesMediaEngine,
+                                          )
+                                        : null;
+                                    final wordHighlightBinding =
+                                        wordHighlightSource == null
+                                        ? null
+                                        : WordHighlightBinding(
+                                            source: wordHighlightSource,
+                                            sentenceStartMs: sentence
+                                                .startTime
+                                                .inMilliseconds,
+                                            sentenceEndMs:
+                                                sentence.endTime.inMilliseconds,
+                                          );
                                     // PageView 会同时预建相邻页。讲解态只能属于 provider
                                     // 当前的源句，目标页在横滑期间始终显示盲听内容。
                                     final showAnnotationContent =
@@ -772,6 +808,8 @@ class _IntensiveListenPlayerScreenState
                                                 sentenceAiNotifierProvider,
                                               ),
                                               audioItemId: widget.audioItemId,
+                                              wordHighlightSource:
+                                                  wordHighlightSource,
                                               sentenceIndex: sentence.index,
                                               sentenceStartMs: sentence
                                                   .startTime
@@ -860,6 +898,8 @@ class _IntensiveListenPlayerScreenState
                                             onCantUnderstand: () =>
                                                 player.enterAnnotationMode(),
                                             sentenceText: sentence.text,
+                                            wordHighlightBinding:
+                                                wordHighlightBinding,
                                             lookupOrigin:
                                                 DictionaryLookupOrigin(
                                                   audioItemId:

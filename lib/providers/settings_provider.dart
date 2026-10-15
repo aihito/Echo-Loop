@@ -17,6 +17,7 @@ const _skipSilenceEnabledKey = 'skip_silence_enabled';
 const _silenceThresholdSecondsKey = 'silence_threshold_seconds';
 const _aiTranscriptionAutoMergeEnabledKey =
     'ai_transcription_auto_merge_enabled';
+const _wordHighlightEnabledKey = 'word_highlight_enabled';
 
 /// 静音阈值合法范围（秒）
 const silenceThresholdMinSeconds = 1;
@@ -132,6 +133,9 @@ class AppSettingsState {
   /// 原生未合并分句（句子更短）。作为转录弹窗开关的默认值，记住用户上次选择。
   final bool aiTranscriptionAutoMergeEnabled;
 
+  /// 播放原音时高亮当前字幕词语（默认关闭）。
+  final bool wordHighlightEnabled;
+
   const AppSettingsState({
     this.themeMode = ThemeMode.system,
     this.locale,
@@ -143,6 +147,7 @@ class AppSettingsState {
     this.skipSilenceEnabled = true,
     this.silenceThresholdSeconds = silenceThresholdDefaultSeconds,
     this.aiTranscriptionAutoMergeEnabled = true,
+    this.wordHighlightEnabled = false,
   });
 
   AppSettingsState copyWith({
@@ -158,6 +163,7 @@ class AppSettingsState {
     bool? skipSilenceEnabled,
     int? silenceThresholdSeconds,
     bool? aiTranscriptionAutoMergeEnabled,
+    bool? wordHighlightEnabled,
   }) {
     return AppSettingsState(
       themeMode: themeMode ?? this.themeMode,
@@ -176,6 +182,7 @@ class AppSettingsState {
       aiTranscriptionAutoMergeEnabled:
           aiTranscriptionAutoMergeEnabled ??
           this.aiTranscriptionAutoMergeEnabled,
+      wordHighlightEnabled: wordHighlightEnabled ?? this.wordHighlightEnabled,
     );
   }
 }
@@ -266,6 +273,8 @@ class AppSettings extends _$AppSettings {
         );
     final aiTranscriptionAutoMergeEnabled =
         prefs.getBool(_aiTranscriptionAutoMergeEnabledKey) ?? true;
+    final wordHighlightEnabled =
+        prefs.getBool(_wordHighlightEnabledKey) ?? false;
 
     state = state.copyWith(
       themeMode: themeMode,
@@ -278,6 +287,7 @@ class AppSettings extends _$AppSettings {
       skipSilenceEnabled: skipSilenceEnabled,
       silenceThresholdSeconds: silenceThresholdSeconds,
       aiTranscriptionAutoMergeEnabled: aiTranscriptionAutoMergeEnabled,
+      wordHighlightEnabled: wordHighlightEnabled,
     );
   }
 
@@ -411,6 +421,14 @@ class AppSettings extends _$AppSettings {
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_skipSilenceEnabledKey, enabled);
+  }
+
+  /// 设置播放原音时的字幕逐词高亮（默认关闭）。
+  Future<void> setWordHighlightEnabled(bool enabled) async {
+    state = state.copyWith(wordHighlightEnabled: enabled);
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_wordHighlightEnabledKey, enabled);
   }
 
   /// 设置静音阈值（秒）。范围 [silenceThresholdMinSeconds, silenceThresholdMaxSeconds]。

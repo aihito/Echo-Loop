@@ -17,11 +17,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/retell_settings.dart';
 import '../../models/sentence.dart';
+import '../../models/word_highlight_binding.dart';
 import '../../providers/saved_word_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/keyword_extraction.dart';
+import '../../utils/text_normalize.dart';
 import '../guide_flow.dart';
 import '../practice/sentence_word_selection.dart';
+import 'word_highlight_builder.dart';
 
 /// 句子讲解按钮 key 前缀（供 widget test 精准点击，避免点到文本本身）。
 @visibleForTesting
@@ -60,6 +63,9 @@ class MaskedSentenceTile extends ConsumerWidget {
   /// 是否为当前播放中的句子
   final bool isPlayingSentence;
 
+  /// 当前句子的原音时间轴；遮盖模式仍不会透露被遮住的词。
+  final WordHighlightBinding? wordHighlightBinding;
+
   /// 是否已收藏
   final bool isBookmarked;
 
@@ -84,6 +90,7 @@ class MaskedSentenceTile extends ConsumerWidget {
     required this.displayMode,
     required this.keywordIndices,
     required this.isPlayingSentence,
+    this.wordHighlightBinding,
     this.isBookmarked = false,
     this.onPlayFromTap,
     this.onDetailTap,
@@ -100,6 +107,16 @@ class MaskedSentenceTile extends ConsumerWidget {
       sentence.text,
       ref.watch(savedTextIndexProvider),
     );
+    final words = tokenize(sentence.text);
+    final binding = wordHighlightBinding;
+    final Widget sentenceText = binding == null
+        ? _buildMaskedText(theme, words, savedSegments, null)
+        : WordHighlightBuilder(
+            text: sentence.text,
+            binding: binding,
+            builder: (context, activeWordIndex) =>
+                _buildMaskedText(theme, words, savedSegments, activeWordIndex),
+          );
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
@@ -142,11 +159,7 @@ class MaskedSentenceTile extends ConsumerWidget {
                   ),
                   theme: theme,
                   onTap: onPlayFromTap,
-                  child: _buildMaskedText(
-                    theme,
-                    tokenize(sentence.text),
-                    savedSegments,
-                  ),
+                  child: sentenceText,
                 ),
               ),
             ),
@@ -172,6 +185,7 @@ class MaskedSentenceTile extends ConsumerWidget {
     ThemeData theme,
     List<String> words,
     Map<int, List<(int, int, bool)>> savedSegments,
+    int? activeWordIndex,
   ) {
     if (words.isEmpty) return const SizedBox.shrink();
 
@@ -187,7 +201,13 @@ class MaskedSentenceTile extends ConsumerWidget {
     return Wrap(
       spacing: _wordSpacing,
       runSpacing: 2,
-      children: _buildWordWidgets(words, shouldMask, theme, savedSegments),
+      children: _buildWordWidgets(
+        words,
+        shouldMask,
+        theme,
+        savedSegments,
+        activeWordIndex,
+      ),
     );
   }
 
@@ -200,19 +220,27 @@ class MaskedSentenceTile extends ConsumerWidget {
     bool Function(int index) shouldMask,
     ThemeData theme,
     Map<int, List<(int, int, bool)>> savedSegments,
+    int? activeWordIndex,
   ) {
-    return [
-      for (var i = 0; i < words.length; i++)
+    var playbackWordIndex = 0;
+    final blocks = <Widget>[];
+    for (var i = 0; i < words.length; i++) {
+      final isWord = normalizeWord(words[i]).isNotEmpty;
+      blocks.add(
         _WordBlock(
           text: words[i],
           isMasked: shouldMask(i),
+          isActiveWord: isWord && playbackWordIndex == activeWordIndex,
           isPrevMasked: i > 0 && shouldMask(i) && shouldMask(i - 1),
           isNextMasked:
               i < words.length - 1 && shouldMask(i) && shouldMask(i + 1),
           savedSegments: savedSegments[i],
           theme: theme,
         ),
-    ];
+      );
+      if (isWord) playbackWordIndex++;
+    }
+    return blocks;
   }
 }
 
@@ -383,6 +411,7 @@ class _SentenceBookmarkHitArea extends StatelessWidget {
 class _WordBlock extends StatelessWidget {
   final String text;
   final bool isMasked;
+  final bool isActiveWord;
   final bool isPrevMasked;
   final bool isNextMasked;
 
@@ -394,6 +423,7 @@ class _WordBlock extends StatelessWidget {
   const _WordBlock({
     required this.text,
     required this.isMasked,
+    required this.isActiveWord,
     required this.theme,
     this.isPrevMasked = false,
     this.isNextMasked = false,
@@ -413,6 +443,13 @@ class _WordBlock extends StatelessWidget {
                 left: isPrevMasked ? Radius.zero : const Radius.circular(3),
                 right: isNextMasked ? Radius.zero : const Radius.circular(3),
               ),
+            )
+          : isActiveWord
+          ? BoxDecoration(
+              color: AppTheme.wordHighlightBackgroundColor(
+                theme.colorScheme,
+              ),
+              borderRadius: BorderRadius.circular(3),
             )
           : null,
       child: _buildText(),

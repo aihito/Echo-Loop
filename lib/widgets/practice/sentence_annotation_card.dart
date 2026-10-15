@@ -12,6 +12,7 @@ import '../../l10n/app_localizations.dart';
 import '../../providers/sentence_ai_provider.dart';
 import '../../services/app_logger.dart';
 import '../../models/sense_group_result.dart';
+import '../../models/word_highlight_binding.dart';
 import '../../models/sentence_ai_result.dart';
 import '../../models/speech_practice_models.dart';
 import '../../theme/app_theme.dart';
@@ -21,6 +22,7 @@ import '../common/shimmer_placeholder.dart';
 import '../guide_flow.dart';
 import 'selectable_sentence_text.dart';
 import 'sense_group_text.dart';
+import '../common/word_highlight_builder.dart';
 
 /// 句子 AI 请求来源。
 enum SentenceAiRequestSource { automatic, userTap }
@@ -99,6 +101,9 @@ class SentenceAnnotationCard extends StatefulWidget {
 
   /// 句子正文的高亮片段；为空时按原始句子构建。
   final List<SpeechTranscriptSegment>? highlightedSegments;
+
+  /// 当前句子对应的原音位置；为空时保持普通文本渲染。
+  final WordHighlightBinding? wordHighlightBinding;
 
   /// AI 意群拆分结果（null 表示未请求或无数据，包含大意群和小意群）
   final SenseGroupResult? senseGroupResult;
@@ -185,6 +190,7 @@ class SentenceAnnotationCard extends StatefulWidget {
     this.sentenceEndMs,
     this.inlineFeedback,
     this.highlightedSegments,
+    this.wordHighlightBinding,
     this.senseGroupResult,
     this.senseGroupTimings,
     this.onSenseGroupModeChanged,
@@ -953,33 +959,44 @@ class SentenceAnnotationCardState extends State<SentenceAnnotationCard> {
         _activeSenseGroups != null &&
         _activeSenseGroups!.isNotEmpty;
 
-    final Widget sentenceBody = showSenseGroupBlocks
-        ? SenseGroupText(
-            chunks: _activeSenseGroups!,
-            timings: widget.senseGroupTimings ?? const [],
-            playingGroupIndex: widget.playingSenseGroupIndex,
-            playedGroupIndices: widget.playedSenseGroupIndices,
-            onTapGroup: widget.onTapSenseGroup ?? (_) {},
-            savedGroupTexts: widget.savedGroupTexts,
-            onTapGroupWithRect: widget.onTapGroupWithRect,
-            highlightedSegments: widget.highlightedSegments,
-          )
-        : SelectableSentenceText(
-            text: widget.text,
-            style: theme.textTheme.titleMedium?.copyWith(
-              height: 1.6,
-              color: theme.colorScheme.onSurface,
+    final segments = widget.highlightedSegments;
+    final playbackText =
+        !showSenseGroupBlocks && segments != null && segments.isNotEmpty
+        ? segments.map((segment) => segment.text).join()
+        : widget.text;
+    final Widget sentenceBody = WordHighlightBuilder(
+      text: playbackText,
+      binding: widget.wordHighlightBinding,
+      builder: (context, activeWordIndex) => showSenseGroupBlocks
+          ? SenseGroupText(
+              chunks: _activeSenseGroups!,
+              timings: widget.senseGroupTimings ?? const [],
+              playingGroupIndex: widget.playingSenseGroupIndex,
+              playedGroupIndices: widget.playedSenseGroupIndices,
+              onTapGroup: widget.onTapSenseGroup ?? (_) {},
+              savedGroupTexts: widget.savedGroupTexts,
+              onTapGroupWithRect: widget.onTapGroupWithRect,
+              highlightedSegments: widget.highlightedSegments,
+              activeWordIndex: activeWordIndex,
+            )
+          : SelectableSentenceText(
+              text: widget.text,
+              style: theme.textTheme.titleMedium?.copyWith(
+                height: 1.6,
+                color: theme.colorScheme.onSurface,
+              ),
+              highlightedSegments: widget.highlightedSegments,
+              activeWordIndex: activeWordIndex,
+              origin: DictionaryLookupOrigin(
+                audioItemId: widget.audioItemId,
+                sentenceIndex: widget.sentenceIndex,
+                sentenceText: widget.text,
+                sentenceStartMs: widget.sentenceStartMs,
+                sentenceEndMs: widget.sentenceEndMs,
+              ),
+              onBeforeLookup: () => widget.onToolbarButtonTapped?.call(),
             ),
-            highlightedSegments: widget.highlightedSegments,
-            origin: DictionaryLookupOrigin(
-              audioItemId: widget.audioItemId,
-              sentenceIndex: widget.sentenceIndex,
-              sentenceText: widget.text,
-              sentenceStartMs: widget.sentenceStartMs,
-              sentenceEndMs: widget.sentenceEndMs,
-            ),
-            onBeforeLookup: () => widget.onToolbarButtonTapped?.call(),
-          );
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

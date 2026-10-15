@@ -6,6 +6,7 @@ import '../../l10n/app_localizations.dart';
 import '../../models/audio_item.dart';
 import '../../models/sentence.dart';
 import '../../models/sense_group_range_playback.dart';
+import '../../models/word_highlight_binding.dart';
 import '../../services/app_logger.dart';
 import '../../services/subtitle_parser.dart';
 import '../../theme/app_theme.dart';
@@ -83,6 +84,7 @@ class FreePlayerSentencePager extends StatefulWidget {
     required this.isPlaying,
     required this.scope,
     required this.actions,
+    this.wordHighlightSource,
   });
 
   final FreePlayerSentencePagerController controller;
@@ -94,6 +96,9 @@ class FreePlayerSentencePager extends StatefulWidget {
   final bool isPlaying;
   final FreePlayerSentenceScope scope;
   final FreePlayerSentenceActions actions;
+
+  /// 页面实际播放原音的时间轴；为空时分页器保持普通文本。
+  final WordHighlightSource? wordHighlightSource;
 
   @override
   State<FreePlayerSentencePager> createState() =>
@@ -536,6 +541,9 @@ class _FreePlayerSentencePagerState extends State<FreePlayerSentencePager> {
             key: ValueKey(sentence.index),
             text: sentence.text,
             audioItemId: widget.audioItem.id,
+            wordHighlightSource: isActivePage
+                ? widget.wordHighlightSource
+                : null,
             sentenceIndex: sentence.index,
             sentenceStartMs: sentence.startTime.inMilliseconds,
             sentenceEndMs: sentence.endTime.inMilliseconds,

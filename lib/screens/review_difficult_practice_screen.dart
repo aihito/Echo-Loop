@@ -21,6 +21,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../router/app_router.dart';
 import '../models/media_learning_startup.dart';
+import '../models/word_highlight_binding.dart';
 import '../widgets/speech_permission_dialog.dart';
 import '../database/enums.dart';
 import '../features/chatbot/widgets/sentence_chat_button.dart';
@@ -31,6 +32,8 @@ import '../providers/learning_progress_provider.dart';
 import '../providers/learning_settings_provider.dart';
 import '../providers/learning_session/learning_session_provider.dart';
 import '../providers/learning_session/review_difficult_practice_provider.dart';
+import '../providers/audio_engine/foreground_audio_engine_provider.dart';
+import '../providers/media_engine/media_engine_provider.dart';
 import '../providers/speech/speech_recording_controller.dart';
 import '../utils/wakelock_mixin.dart';
 import '../providers/sentence_ai_provider.dart';
@@ -85,6 +88,23 @@ class ReviewDifficultPracticeScreen extends ConsumerStatefulWidget {
 class _ReviewDifficultPracticeScreenState
     extends ConsumerState<ReviewDifficultPracticeScreen>
     with WakelockMixin {
+  WordHighlightSource _wordHighlightSource(bool usesMediaEngine) {
+    if (usesMediaEngine) {
+      final engine = ref.read(mediaEngineProvider.notifier);
+      return WordHighlightSource(
+        audioItemId: widget.audioItemId,
+        positionStream: engine.positionStream,
+        currentPosition: engine.currentPosition,
+      );
+    }
+    final engine = ref.read(foregroundAudioEngineProvider.notifier);
+    return WordHighlightSource(
+      audioItemId: widget.audioItemId,
+      positionStream: engine.absolutePositionStream,
+      currentPosition: engine.absoluteCurrentPosition,
+    );
+  }
+
   /// 难句补练与逐句精听共用的横向分页控制器。
   final PracticeSentencePagerController _sentencePager =
       PracticeSentencePagerController();
@@ -679,6 +699,22 @@ class _ReviewDifficultPracticeScreenState
                                     final isActivePage =
                                         sentenceIndex ==
                                         playerState.currentSentenceIndex;
+                                    final wordHighlightSource = isActivePage
+                                        ? _wordHighlightSource(
+                                            playerState.usesMediaEngine,
+                                          )
+                                        : null;
+                                    final wordHighlightBinding =
+                                        wordHighlightSource == null
+                                        ? null
+                                        : WordHighlightBinding(
+                                            source: wordHighlightSource,
+                                            sentenceStartMs: sentence
+                                                .startTime
+                                                .inMilliseconds,
+                                            sentenceEndMs:
+                                                sentence.endTime.inMilliseconds,
+                                          );
                                     final showAnnotationContent =
                                         isActivePage &&
                                         playerState.isAnnotationMode;
@@ -693,6 +729,8 @@ class _ReviewDifficultPracticeScreenState
                                                 sentenceAiNotifierProvider,
                                               ),
                                               audioItemId: widget.audioItemId,
+                                              wordHighlightSource:
+                                                  wordHighlightSource,
                                               sentenceIndex:
                                                   player.currentIndex,
                                               sentenceStartMs: sentence
@@ -778,6 +816,8 @@ class _ReviewDifficultPracticeScreenState
                                       isDifficult: sentence.isBookmarked,
                                       showBookmarkRow: false,
                                       sentenceText: sentence.text,
+                                      wordHighlightBinding:
+                                          wordHighlightBinding,
                                       lookupOrigin: DictionaryLookupOrigin(
                                         audioItemId: widget.audioItemId,
                                         sentenceIndex: sentence.index,

@@ -2284,6 +2284,8 @@
   "retellSkippedSuffix": "Skipped",
   "skipSilenceTitle": "Auto-skip Silence",
   "skipSilenceDescription": "Skip long silences between sentences",
+  "wordHighlightTitle": "Highlight Words During Playback",
+  "wordHighlightDescription": "Highlight each word as it is spoken in the original audio",
   "silenceThreshold": "Silence Threshold",
   "silenceThresholdValue": "{seconds}s",
   "@silenceThresholdValue": {

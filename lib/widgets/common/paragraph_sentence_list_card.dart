@@ -11,6 +11,7 @@ import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../../models/retell_settings.dart';
 import '../../models/sentence.dart';
+import '../../models/word_highlight_binding.dart';
 import '../../models/sentence_focus_reason.dart';
 import '../../theme/app_theme.dart';
 import '../guide_flow.dart';
@@ -51,6 +52,9 @@ class ParagraphSentenceListCard extends StatefulWidget {
 
   /// 列表暂时隐藏后，若焦点没有变化则保留滚动位置。
   final bool preserveScrollPositionOnReactivation;
+
+  /// 当前任务实际使用的原音播放时间轴。
+  final WordHighlightSource? wordHighlightSource;
   final Duration autoFocusResumeDelay;
 
   /// 已收藏句子索引集合（用于显示只读标记）
@@ -87,6 +91,7 @@ class ParagraphSentenceListCard extends StatefulWidget {
     this.focusRestoreRevision = 0,
     this.directInitialPositioning = false,
     this.preserveScrollPositionOnReactivation = false,
+    this.wordHighlightSource,
     this.autoFocusResumeDelay = const Duration(seconds: 2),
     this.bookmarkedSentenceIndices = const {},
     this.onSentenceExplanationTap,
@@ -558,6 +563,7 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
               final onSentenceExplanationTap = widget.onSentenceExplanationTap;
               final onSentencePlayFrom = widget.onSentencePlayFrom;
               final onSentenceBookmarkToggle = widget.onSentenceBookmarkToggle;
+              final wordHighlightSource = widget.wordHighlightSource;
               return Builder(
                 builder: (itemContext) {
                   _scrollPosition = Scrollable.of(itemContext).position;
@@ -571,6 +577,15 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
                         widget.keywordMap[sentence.index] ?? const {},
                     isPlayingSentence:
                         sentenceIndex == widget.playingSentenceIndex,
+                    wordHighlightBinding:
+                        sentenceIndex == widget.playingSentenceIndex &&
+                            wordHighlightSource != null
+                        ? WordHighlightBinding(
+                            source: wordHighlightSource,
+                            sentenceStartMs: sentence.startTime.inMilliseconds,
+                            sentenceEndMs: sentence.endTime.inMilliseconds,
+                          )
+                        : null,
                     isBookmarked: widget.bookmarkedSentenceIndices.contains(
                       sentence.index,
                     ),

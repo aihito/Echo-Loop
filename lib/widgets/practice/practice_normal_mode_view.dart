@@ -12,8 +12,13 @@ import 'package:flutter/material.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../theme/app_theme.dart';
+import '../../models/word_highlight_binding.dart';
+import '../../utils/text_normalize.dart';
 import '../../widgets/common/tappable_wrapper.dart';
+import '../../widgets/common/word_highlight_builder.dart';
 import 'selectable_sentence_text.dart';
+
+final _sentenceWordPattern = RegExp(r'\S+');
 
 /// 普通模式视图（文字遮盖 / 偷看）
 class PracticeNormalModeView extends StatelessWidget {
@@ -105,6 +110,9 @@ class PracticeNormalModeView extends StatelessWidget {
   /// 查词前副作用钩子（如进入等待用户态），点词与词组松手时触发
   final VoidCallback? onBeforeLookup;
 
+  /// 当前句子在原音播放时间轴中的位置；为空时保持原有显示。
+  final WordHighlightBinding? wordHighlightBinding;
+
   const PracticeNormalModeView({
     super.key,
     required this.l10n,
@@ -124,25 +132,44 @@ class PracticeNormalModeView extends StatelessWidget {
     ),
     this.lookupOrigin,
     this.onBeforeLookup,
+    this.wordHighlightBinding,
   });
 
   @override
   Widget build(BuildContext context) {
-    final subtitleContent = isTextRevealed && sentenceText != null
-        ? GestureDetector(
-            onTap: () {}, // 拦截文字区域点击，不冒泡到偷看切换
-            child: lookupOrigin != null
-                ? SelectableSentenceText(
-                    text: sentenceText!,
-                    style: theme.textTheme.bodyLarge?.copyWith(height: 1.6),
-                    origin: lookupOrigin!,
-                    onBeforeLookup: onBeforeLookup,
-                  )
-                : Text(
-                    sentenceText!,
-                    style: theme.textTheme.bodyLarge?.copyWith(height: 1.6),
-                  ),
-          )
+    final text = sentenceText;
+    Widget buildRevealedText(int? activeWordIndex) {
+      if (text == null) return const SizedBox.shrink();
+      final origin = lookupOrigin;
+      return GestureDetector(
+        onTap: () {}, // 拦截文字区域点击，不冒泡到偷看切换
+        child: origin != null
+            ? SelectableSentenceText(
+                text: text,
+                style: theme.textTheme.bodyLarge?.copyWith(height: 1.6),
+                origin: origin,
+                onBeforeLookup: onBeforeLookup,
+                activeWordIndex: activeWordIndex,
+              )
+            : _buildStaticSentenceText(
+                text,
+                theme.textTheme.bodyLarge?.copyWith(height: 1.6),
+                theme,
+                activeWordIndex,
+              ),
+      );
+    }
+
+    final binding = wordHighlightBinding;
+    final subtitleContent = isTextRevealed && text != null
+        ? binding == null
+              ? buildRevealedText(null)
+              : WordHighlightBuilder(
+                  text: text,
+                  binding: binding,
+                  builder: (context, activeWordIndex) =>
+                      buildRevealedText(activeWordIndex),
+                )
         : KeyedSubtree(
             key: hiddenPlaceholderKey,
             child: _HiddenTextPlaceholder(
@@ -359,6 +386,42 @@ class PracticeNormalModeView extends StatelessWidget {
     );
     return button;
   }
+}
+
+Widget _buildStaticSentenceText(
+  String text,
+  TextStyle? style,
+  ThemeData theme,
+  int? activeWordIndex,
+) {
+  final spans = <InlineSpan>[];
+  var lastOffset = 0;
+  var wordIndex = 0;
+  for (final match in _sentenceWordPattern.allMatches(text)) {
+    if (match.start > lastOffset) {
+      spans.add(TextSpan(text: text.substring(lastOffset, match.start)));
+    }
+    final token = match.group(0) ?? '';
+    final isWord = normalizeWord(token).isNotEmpty;
+    spans.add(
+      TextSpan(
+        text: token,
+        style: isWord && wordIndex == activeWordIndex
+            ? TextStyle(
+                backgroundColor: AppTheme.wordHighlightBackgroundColor(
+                  theme.colorScheme,
+                ),
+              )
+            : null,
+      ),
+    );
+    if (isWord) wordIndex++;
+    lastOffset = match.end;
+  }
+  if (lastOffset < text.length) {
+    spans.add(TextSpan(text: text.substring(lastOffset)));
+  }
+  return Text.rich(TextSpan(style: style, children: spans));
 }
 
 /// 偷看字幕标签（字幕区下方，提示可点击）

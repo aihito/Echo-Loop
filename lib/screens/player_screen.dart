@@ -8,6 +8,7 @@ import '../l10n/app_localizations.dart';
 import '../models/playback_settings.dart';
 import '../models/retell_settings.dart';
 import '../models/sentence.dart';
+import '../models/word_highlight_binding.dart';
 import '../providers/listening_practice/listening_practice_provider.dart';
 import '../providers/audio_engine/audio_engine_provider.dart';
 import '../providers/collection_provider.dart';
@@ -287,6 +288,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           : RetellDisplayMode.hideAll,
       keywordMap: const {},
       playingSentenceIndex: playerState.currentFullIndex ?? -1,
+      wordHighlightSource: _wordHighlightSource(
+        playerState.currentAudioItem?.id,
+      ),
       autoFocusEnabled: true,
       bookmarkedSentenceIndices: playerState.bookmarkedIndices,
       onSentencePlayFrom: (s) => controller.selectFullSentence(s.index),
@@ -387,6 +391,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           : RetellDisplayMode.hideAll,
       keywordMap: const {},
       playingSentenceIndex: playingLocalIndex,
+      wordHighlightSource: _wordHighlightSource(
+        playerState.currentAudioItem?.id,
+      ),
       autoFocusEnabled: true,
       bookmarkedSentenceIndices: playerState.bookmarkedIndices,
       onSentencePlayFrom: (s) => controller.selectBookmarkedSentence(s.index),
@@ -432,6 +439,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         onToolbarButtonTapped: () =>
             unawaited(controller.pauseAfterCurrentSentence()),
       ),
+      wordHighlightSource: _wordHighlightSource(audioItem.id),
+    );
+  }
+
+  WordHighlightSource? _wordHighlightSource(String? audioItemId) {
+    if (audioItemId == null) return null;
+    final engine = ref.read(audioEngineProvider.notifier);
+    return WordHighlightSource(
+      audioItemId: audioItemId,
+      positionStream: engine.absolutePositionStream,
+      currentPosition: engine.absoluteCurrentPosition,
     );
   }
 

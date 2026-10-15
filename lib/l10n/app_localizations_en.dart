@@ -4412,6 +4412,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get skipSilenceDescription => 'Skip long silences between sentences';
 
   @override
+  String get wordHighlightTitle => 'Highlight Words During Playback';
+
+  @override
+  String get wordHighlightDescription =>
+      'Highlight each word as it is spoken in the original audio';
+
+  @override
   String get silenceThreshold => 'Silence Threshold';
 
   @override

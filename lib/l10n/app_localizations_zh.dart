@@ -4210,6 +4210,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get skipSilenceDescription => '跳过句子之间较长的静音部分';
 
   @override
+  String get wordHighlightTitle => '逐词高亮';
+
+  @override
+  String get wordHighlightDescription => '播放原音时高亮当前读到的单词';
+
+  @override
   String get silenceThreshold => '静音阈值';
 
   @override

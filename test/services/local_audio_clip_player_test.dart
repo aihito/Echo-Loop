@@ -104,6 +104,31 @@ void main() {
     await player.dispose();
   });
 
+  test('位置流在后端首次创建前订阅也能收到播放位置', () async {
+    final backend = _FakeBackend();
+    final player = LocalAudioClipPlayer(backend: backend);
+    final positions = <Duration>[];
+    final subscription = player.positionStream.listen(positions.add);
+    final playback = player.playRangeFile(
+      '/audio/source.m4a',
+      start: const Duration(seconds: 3),
+      end: const Duration(seconds: 5),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    backend.currentPosition = const Duration(milliseconds: 3400);
+    backend.positionController.add(backend.currentPosition);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(positions, [const Duration(milliseconds: 3400)]);
+    expect(player.currentPosition, const Duration(milliseconds: 3400));
+
+    await player.stop();
+    expect(await playback, AudioPlaybackResult.cancelled);
+    await subscription.cancel();
+    await player.dispose();
+  });
+
   test('new playback immediately cancels an active range', () async {
     final backend = _FakeBackend();
     final player = LocalAudioClipPlayer(backend: backend);

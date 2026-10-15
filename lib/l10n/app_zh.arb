@@ -1811,6 +1811,8 @@
   "retellSkippedSuffix": "已跳过",
   "skipSilenceTitle": "自动跳过静音",
   "skipSilenceDescription": "跳过句子之间较长的静音部分",
+  "wordHighlightTitle": "逐词高亮",
+  "wordHighlightDescription": "播放原音时高亮当前读到的单词",
   "silenceThreshold": "静音阈值",
   "silenceThresholdValue": "{seconds} 秒",
   "@silenceThresholdValue": {

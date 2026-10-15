@@ -11,6 +11,7 @@ import '../models/media_playback_state.dart';
 import '../models/playback_settings.dart';
 import '../models/retell_settings.dart';
 import '../models/sentence.dart';
+import '../models/word_highlight_binding.dart';
 import '../providers/collection_provider.dart';
 import '../providers/media_engine/media_engine_provider.dart';
 import '../providers/media_playback/media_playback_provider.dart';
@@ -488,6 +489,12 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
         ? state.bookmarkSettings
         : state.fullSettings;
     final audioItem = state.audioItem ?? widget.audioItem;
+    final mediaEngine = ref.read(mediaEngineProvider.notifier);
+    final wordHighlightSource = WordHighlightSource(
+      audioItemId: audioItem.id,
+      positionStream: mediaEngine.positionStream,
+      currentPosition: mediaEngine.currentPosition,
+    );
     final isBookmarkMode = mode == PlaylistMode.bookmarks;
     final showSingleSentence =
         settings.singleSentenceMode && currentSentenceIndex != null;
@@ -515,6 +522,7 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
         onToolbarButtonTapped: () =>
             unawaited(controller.pauseAfterCurrentSentence()),
       ),
+      wordHighlightSource: wordHighlightSource,
     );
     final listPane = ParagraphSentenceListCard(
       key: ValueKey('media-sentence-list-${audioItem.id}-${mode.name}'),
@@ -524,6 +532,7 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
           : RetellDisplayMode.hideAll,
       keywordMap: const {},
       playingSentenceIndex: resolvedPlayingLocalIndex,
+      wordHighlightSource: wordHighlightSource,
       autoFocusEnabled: true,
       focusActive:
           !showSingleSentence &&

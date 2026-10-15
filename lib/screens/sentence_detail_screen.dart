@@ -22,7 +22,9 @@ import '../models/audio_item.dart' as model;
 import '../models/media_playback_state.dart';
 import '../models/sense_group_range_playback.dart';
 import '../models/sentence.dart';
+import '../models/word_highlight_binding.dart';
 import '../providers/audio_engine/audio_engine_provider.dart';
+import '../providers/media_engine/media_engine_provider.dart';
 import '../providers/listening_practice/bookmark_manager.dart';
 import '../providers/favorite_sentence_lifecycle_provider.dart';
 import '../providers/notification_permission_provider.dart';
@@ -352,6 +354,9 @@ class _SentenceDetailScreenState extends ConsumerState<SentenceDetailScreen> {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context)!;
     final args = widget.args;
+    final wordHighlightSource = args.mediaSession != null
+        ? _mediaWordHighlightSource(args.audioItemId)
+        : _audioWordHighlightSource(args.audioItemId);
 
     final durationMs = args.endTimeMs - args.startTimeMs;
     final durationSec = durationMs / 1000;
@@ -437,6 +442,7 @@ class _SentenceDetailScreenState extends ConsumerState<SentenceDetailScreen> {
                         text: args.sentenceText,
                         aiNotifier: ref.read(sentenceAiNotifierProvider),
                         audioItemId: args.audioItemId,
+                        wordHighlightSource: wordHighlightSource,
                         sentenceIndex: args.sentenceIndex,
                         sentenceStartMs: args.startTimeMs,
                         sentenceEndMs: args.endTimeMs,
@@ -468,6 +474,24 @@ class _SentenceDetailScreenState extends ConsumerState<SentenceDetailScreen> {
                 ],
               ),
             ),
+    );
+  }
+
+  WordHighlightSource _audioWordHighlightSource(String audioItemId) {
+    final engine = ref.read(audioEngineProvider.notifier);
+    return WordHighlightSource(
+      audioItemId: audioItemId,
+      positionStream: engine.absolutePositionStream,
+      currentPosition: engine.absoluteCurrentPosition,
+    );
+  }
+
+  WordHighlightSource _mediaWordHighlightSource(String audioItemId) {
+    final engine = ref.read(mediaEngineProvider.notifier);
+    return WordHighlightSource(
+      audioItemId: audioItemId,
+      positionStream: engine.positionStream,
+      currentPosition: engine.currentPosition,
     );
   }
 

@@ -7712,6 +7712,18 @@ abstract class AppLocalizations {
   /// **'Skip long silences between sentences'**
   String get skipSilenceDescription;
 
+  /// No description provided for @wordHighlightTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Highlight Words During Playback'**
+  String get wordHighlightTitle;
+
+  /// No description provided for @wordHighlightDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Highlight each word as it is spoken in the original audio'**
+  String get wordHighlightDescription;
+
   /// No description provided for @silenceThreshold.
   ///
   /// In en, this message translates to:
