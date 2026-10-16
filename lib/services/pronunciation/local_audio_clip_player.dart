@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:media_kit/media_kit.dart';
 
+import '../../models/word_highlight_binding.dart';
 import '../app_logger.dart';
 import '../media_kit_debug_initializer.dart';
 
@@ -95,9 +96,13 @@ enum AudioPlaybackResult { completed, cancelled, failed }
 ///
 /// [playingKey] 是调用方提供的透明 UI 标识，播放器不解释其业务含义。
 class LocalAudioClipPlaybackState {
-  const LocalAudioClipPlaybackState({this.playingKey});
+  const LocalAudioClipPlaybackState({
+    this.playingKey,
+    this.wordHighlightPlaybackStatus = WordHighlightPlaybackStatus.idle,
+  });
 
   final String? playingKey;
+  final WordHighlightPlaybackStatus wordHighlightPlaybackStatus;
 }
 
 /// 调用方无状态的本地短音频试听服务。
@@ -122,6 +127,10 @@ class LocalAudioClipPlayer {
   StreamSubscription<Duration>? _positionSubscription;
   Future<void> _pendingPositionCancellations = Future<void>.value();
   late final StreamController<Duration> _positions;
+  final StreamController<LocalAudioClipPlaybackState> _states =
+      StreamController<LocalAudioClipPlaybackState>.broadcast();
+  late final Stream<WordHighlightPlaybackStatus> _wordHighlightStatuses =
+      _states.stream.map((state) => state.wordHighlightPlaybackStatus);
 
   /// 有位置流订阅者时，将后端位置事件接入共享流。
   void _attachPositionListener() {
@@ -131,7 +140,9 @@ class LocalAudioClipPlayer {
     }
     _positionSubscription = backend.positions.listen(
       (position) {
-        if (!_positions.isClosed) _positions.add(position);
+        if (!_positions.isClosed) {
+          _positions.add(_preservedPosition ?? position);
+        }
       },
       onError: (Object error, StackTrace stackTrace) {
         if (!_positions.isClosed) _positions.addError(error, stackTrace);
@@ -173,18 +184,26 @@ class LocalAudioClipPlayer {
 
   int _sessionId = 0;
   _PlaybackCompletion? _activePlayback;
+  Duration? _preservedPosition;
   LocalAudioClipPlaybackState _state = const LocalAudioClipPlaybackState();
-  final StreamController<LocalAudioClipPlaybackState> _states =
-      StreamController<LocalAudioClipPlaybackState>.broadcast();
 
   LocalAudioClipPlaybackState get state => _state;
   Stream<LocalAudioClipPlaybackState> get states => _states.stream;
+
+  /// 当前短音频播放的逐词高亮生命周期状态。
+  WordHighlightPlaybackStatus get wordHighlightPlaybackStatus =>
+      _state.wordHighlightPlaybackStatus;
+
+  /// 短音频逐词高亮生命周期状态流。
+  Stream<WordHighlightPlaybackStatus> get wordHighlightPlaybackStatusStream =>
+      _wordHighlightStatuses;
 
   /// 当前本地音频时间位置流；仅在有订阅者时监听并转发后端位置事件。
   Stream<Duration> get positionStream => _positions.stream;
 
   /// 当前本地音频绝对位置；后端尚未创建时为零。
-  Duration get currentPosition => _backend?.position ?? Duration.zero;
+  Duration get currentPosition =>
+      _preservedPosition ?? _backend?.position ?? Duration.zero;
 
   /// 播放文件直到完成。新播放或 [stop] 会使旧请求返回 [AudioPlaybackResult.cancelled]。
   Future<AudioPlaybackResult> playFile(
@@ -192,8 +211,14 @@ class LocalAudioClipPlayer {
     String? playbackKey,
   }) async {
     final sessionId = ++_sessionId;
+    _preservedPosition = null;
     final completion = _replaceActivePlayback();
-    _setState(LocalAudioClipPlaybackState(playingKey: playbackKey));
+    _setState(
+      LocalAudioClipPlaybackState(
+        playingKey: playbackKey,
+        wordHighlightPlaybackStatus: WordHighlightPlaybackStatus.playing,
+      ),
+    );
     try {
       final backend = _ensureBackend();
       await backend.stop();
@@ -231,8 +256,14 @@ class LocalAudioClipPlayer {
       return AudioPlaybackResult.failed;
     }
     final sessionId = ++_sessionId;
+    _preservedPosition = null;
     final completion = _replaceActivePlayback();
-    _setState(LocalAudioClipPlaybackState(playingKey: playbackKey));
+    _setState(
+      LocalAudioClipPlaybackState(
+        playingKey: playbackKey,
+        wordHighlightPlaybackStatus: WordHighlightPlaybackStatus.playing,
+      ),
+    );
     StreamSubscription<Duration>? positionSub;
     Timer? guard;
 
@@ -293,7 +324,12 @@ class LocalAudioClipPlayer {
   void _finishActivePlayback(_PlaybackCompletion completion) {
     if (!identical(_activePlayback, completion)) return;
     _activePlayback = null;
-    _setState(const LocalAudioClipPlaybackState());
+    final status = switch (completion.result) {
+      AudioPlaybackResult.completed => WordHighlightPlaybackStatus.completed,
+      AudioPlaybackResult.cancelled => WordHighlightPlaybackStatus.paused,
+      AudioPlaybackResult.failed || null => WordHighlightPlaybackStatus.idle,
+    };
+    _setState(LocalAudioClipPlaybackState(wordHighlightPlaybackStatus: status));
   }
 
   void _watchCompletion(_PlaybackCompletion completion, int sessionId) {
@@ -322,9 +358,17 @@ class LocalAudioClipPlayer {
 
   Future<void> stop() async {
     _sessionId++;
+    final wasPlaying = _activePlayback != null;
+    if (wasPlaying) _preservedPosition = _backend?.position;
     _activePlayback?.finish(AudioPlaybackResult.cancelled);
     _activePlayback = null;
-    _setState(const LocalAudioClipPlaybackState());
+    _setState(
+      LocalAudioClipPlaybackState(
+        wordHighlightPlaybackStatus: wasPlaying
+            ? WordHighlightPlaybackStatus.paused
+            : WordHighlightPlaybackStatus.idle,
+      ),
+    );
     await _backend?.stop();
   }
 
@@ -348,10 +392,14 @@ class LocalAudioClipPlayer {
 class _PlaybackCompletion {
   final Completer<AudioPlaybackResult> _completer =
       Completer<AudioPlaybackResult>();
+  AudioPlaybackResult? _result;
 
   Future<AudioPlaybackResult> get future => _completer.future;
+  AudioPlaybackResult? get result => _result;
 
   void finish(AudioPlaybackResult result) {
-    if (!_completer.isCompleted) _completer.complete(result);
+    if (_completer.isCompleted) return;
+    _result = result;
+    _completer.complete(result);
   }
 }

@@ -5,6 +5,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:echo_loop/models/audio_item.dart';
 import 'package:echo_loop/models/sentence.dart';
 import 'package:echo_loop/models/sentence_playback_result.dart';
+import 'package:echo_loop/models/word_highlight_binding.dart';
 import 'package:echo_loop/providers/learning_session/intensive_listen_playback_driver.dart';
 import 'package:echo_loop/providers/media_engine/media_engine_provider.dart';
 import 'package:echo_loop/providers/media_engine/media_sense_group_range_playback.dart';
@@ -127,26 +128,105 @@ void main() {
     );
   });
 
+  test('自然播放结束关闭逐词高亮，定位后重新启用', () async {
+    final engine = container.read(mediaEngineProvider.notifier);
+    await engine.loadMedia(item(), 1.0);
+
+    await engine.play();
+    expect(
+      engine.wordHighlightPlaybackStatus,
+      WordHighlightPlaybackStatus.playing,
+    );
+
+    final completedStatus = engine.wordHighlightPlaybackStatusStream.firstWhere(
+      (status) => status == WordHighlightPlaybackStatus.completed,
+    );
+    backend.emitPlaying(false);
+    backend.emitCompleted();
+    await completedStatus;
+    expect(
+      engine.wordHighlightPlaybackStatus,
+      WordHighlightPlaybackStatus.completed,
+    );
+
+    await engine.seek(const Duration(seconds: 6));
+    expect(
+      engine.wordHighlightPlaybackStatus,
+      WordHighlightPlaybackStatus.paused,
+    );
+  });
+
+  test('手动暂停保留高亮，之后的旧完成事件不清除它', () async {
+    final engine = container.read(mediaEngineProvider.notifier);
+    await engine.loadMedia(item(), 1.0);
+    await engine.play();
+
+    await engine.pause();
+    expect(
+      engine.wordHighlightPlaybackStatus,
+      WordHighlightPlaybackStatus.paused,
+    );
+
+    final completionEvent = backend.completedController.stream.first;
+    backend.emitCompleted();
+    await completionEvent;
+    expect(
+      engine.wordHighlightPlaybackStatus,
+      WordHighlightPlaybackStatus.paused,
+    );
+  });
+
+  test('旧 session 的迟到完成事件不会清除定位后的高亮', () async {
+    final engine = container.read(mediaEngineProvider.notifier);
+    await engine.loadMedia(item(), 1.0);
+    await engine.play();
+
+    engine.newSession();
+    await engine.seek(const Duration(seconds: 6));
+    final pausedStatus = engine.wordHighlightPlaybackStatusStream.firstWhere(
+      (status) => status == WordHighlightPlaybackStatus.paused,
+    );
+    backend.emitPlaying(false);
+    await pausedStatus;
+    final completionEvent = backend.completedController.stream.first;
+    backend.emitCompleted();
+    await completionEvent;
+
+    expect(
+      engine.wordHighlightPlaybackStatus,
+      WordHighlightPlaybackStatus.paused,
+    );
+  });
+
   test('playRange 到达区间终点后自动暂停，并在起播前通知就绪', () async {
     final engine = container.read(mediaEngineProvider.notifier);
     await engine.loadMedia(item(), 1.0);
     var readyCalls = 0;
+    WordHighlightPlaybackStatus? statusAtReady;
 
     final playing = engine.playRange(
       const Duration(seconds: 1),
       const Duration(seconds: 3),
       speed: 1.0,
-      onRangeReady: () => readyCalls++,
+      onRangeReady: () {
+        readyCalls++;
+        statusAtReady = engine.wordHighlightPlaybackStatus;
+      },
     );
     await Future<void>.delayed(Duration.zero);
 
     expect(backend.seekCalls.last, const Duration(seconds: 1));
     expect(backend.playCalls, 1);
     expect(readyCalls, 1);
+    expect(statusAtReady, WordHighlightPlaybackStatus.idle);
     backend.emitPosition(const Duration(seconds: 3));
     expect(await playing, SentencePlaybackResult.completed);
 
     expect(backend.pauseCalls, 2);
+    expect(
+      engine.wordHighlightPlaybackStatus,
+      WordHighlightPlaybackStatus.completed,
+    );
   });
 
   test('playRange 会替换旧请求，旧请求不能暂停新请求', () async {

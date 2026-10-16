@@ -92,6 +92,8 @@ void main() {
               audioItemId: 'media-item',
               positionStream: Stream<Duration>.empty(),
               currentPosition: Duration.zero,
+              playbackStatus: WordHighlightPlaybackStatus.idle,
+              playbackStatusStream: Stream<WordHighlightPlaybackStatus>.empty(),
             ),
           ),
         ),
@@ -120,6 +122,8 @@ void main() {
       audioItemId: 'audio-item',
       positionStream: const Stream<Duration>.empty(),
       currentPosition: const Duration(milliseconds: 1500),
+      playbackStatus: WordHighlightPlaybackStatus.playing,
+      playbackStatusStream: const Stream<WordHighlightPlaybackStatus>.empty(),
     );
     await tester.pumpWidget(
       createTestApp(
@@ -165,6 +169,8 @@ void main() {
               audioItemId: 'media-item',
               positionStream: Stream<Duration>.empty(),
               currentPosition: Duration.zero,
+              playbackStatus: WordHighlightPlaybackStatus.idle,
+              playbackStatusStream: Stream<WordHighlightPlaybackStatus>.empty(),
             ),
           ),
         ),
@@ -207,6 +213,8 @@ void main() {
               audioItemId: 'audio-item',
               positionStream: Stream<Duration>.empty(),
               currentPosition: Duration.zero,
+              playbackStatus: WordHighlightPlaybackStatus.idle,
+              playbackStatusStream: Stream<WordHighlightPlaybackStatus>.empty(),
             ),
           ),
         ),
@@ -250,6 +258,8 @@ void main() {
               audioItemId: 'media-item',
               positionStream: Stream<Duration>.empty(),
               currentPosition: Duration.zero,
+              playbackStatus: WordHighlightPlaybackStatus.idle,
+              playbackStatusStream: Stream<WordHighlightPlaybackStatus>.empty(),
             ),
             mediaSession: SentenceDetailMediaSession(
               readState: () => const MediaPlaybackState(),
@@ -330,6 +340,8 @@ void main() {
               audioItemId: 'audio-item',
               positionStream: Stream<Duration>.empty(),
               currentPosition: Duration.zero,
+              playbackStatus: WordHighlightPlaybackStatus.idle,
+              playbackStatusStream: Stream<WordHighlightPlaybackStatus>.empty(),
             ),
           ),
         ),

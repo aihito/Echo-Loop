@@ -1079,6 +1079,8 @@ WordHighlightSource _audioEngineWordHighlightSource(
     audioItemId: audioItemId,
     positionStream: engine.absolutePositionStream,
     currentPosition: engine.absoluteCurrentPosition,
+    playbackStatus: engine.wordHighlightPlaybackStatus,
+    playbackStatusStream: engine.wordHighlightPlaybackStatusStream,
   );
 }
 

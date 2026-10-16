@@ -87,6 +87,8 @@ class _IntensiveListenPlayerScreenState
         audioItemId: widget.audioItemId,
         positionStream: engine.positionStream,
         currentPosition: engine.currentPosition,
+        playbackStatus: engine.wordHighlightPlaybackStatus,
+        playbackStatusStream: engine.wordHighlightPlaybackStatusStream,
       );
     }
     final engine = ref.read(audioEngineProvider.notifier);
@@ -94,6 +96,8 @@ class _IntensiveListenPlayerScreenState
       audioItemId: widget.audioItemId,
       positionStream: engine.absolutePositionStream,
       currentPosition: engine.absoluteCurrentPosition,
+      playbackStatus: engine.wordHighlightPlaybackStatus,
+      playbackStatusStream: engine.wordHighlightPlaybackStatusStream,
     );
   }
 

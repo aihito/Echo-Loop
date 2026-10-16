@@ -17,7 +17,7 @@ const _timestamps = [
   ),
   WordTimestamp(
     word: 'world',
-    startTime: Duration(milliseconds: 400),
+    startTime: Duration(milliseconds: 300),
     endTime: Duration(milliseconds: 600),
   ),
 ];
@@ -52,7 +52,10 @@ void main() {
 
   testWidgets('开启后初始播放位置和后续 seek 都更新活动词', (tester) async {
     final positions = StreamController<Duration>.broadcast();
+    final playbackStatuses =
+        StreamController<WordHighlightPlaybackStatus>.broadcast();
     addTearDown(positions.close);
+    addTearDown(playbackStatuses.close);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -66,7 +69,10 @@ void main() {
           home: Scaffold(
             body: WordHighlightBuilder(
               text: 'hello world',
-              binding: _binding(positions.stream),
+              binding: _binding(
+                positions.stream,
+                playbackStatusStream: playbackStatuses.stream,
+              ),
               builder: (context, index) => Text('word:$index'),
             ),
           ),
@@ -75,24 +81,55 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.text('word:null'), findsOneWidget);
+
+    playbackStatuses.add(WordHighlightPlaybackStatus.playing);
+    await tester.pumpAndSettle();
     expect(find.text('word:1'), findsOneWidget);
 
     positions.add(const Duration(milliseconds: 250));
     await tester.pumpAndSettle();
     expect(find.text('word:0'), findsOneWidget);
+
+    playbackStatuses.add(WordHighlightPlaybackStatus.paused);
+    await tester.pumpAndSettle();
+    expect(find.text('word:0'), findsOneWidget);
+
+    // 相邻词首尾相接时，completed 也必须清掉边界上可能命中的下一词。
+    positions.add(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(find.text('word:1'), findsOneWidget);
+
+    playbackStatuses.add(WordHighlightPlaybackStatus.completed);
+    await tester.pumpAndSettle();
+    expect(find.text('word:null'), findsOneWidget);
+
+    // 定位事件先于重新播放到达；它必须在高亮关闭期间也被位置流接收。
+    positions.add(const Duration(milliseconds: 150));
+    await tester.pumpAndSettle();
+    expect(find.text('word:null'), findsOneWidget);
+
+    playbackStatuses.add(WordHighlightPlaybackStatus.playing);
+    await tester.pumpAndSettle();
+    expect(find.text('word:0'), findsOneWidget);
   });
 }
 
-WordHighlightBinding _binding(Stream<Duration> positionStream) =>
-    WordHighlightBinding(
-      source: WordHighlightSource(
-        audioItemId: 'audio',
-        positionStream: positionStream,
-        currentPosition: const Duration(milliseconds: 450),
-      ),
-      sentenceStartMs: 0,
-      sentenceEndMs: 1000,
-    );
+WordHighlightBinding _binding(
+  Stream<Duration> positionStream, {
+  Stream<WordHighlightPlaybackStatus> playbackStatusStream =
+      const Stream<WordHighlightPlaybackStatus>.empty(),
+}) => WordHighlightBinding(
+  source: WordHighlightSource(
+    audioItemId: 'audio',
+    positionStream: positionStream,
+    currentPosition: const Duration(milliseconds: 450),
+    playbackStatus: WordHighlightPlaybackStatus.idle,
+    playbackStatusStream: playbackStatusStream,
+  ),
+  sentenceStartMs: 0,
+  sentenceEndMs: 1000,
+);
 
 class _TestSettings extends AppSettings {
   _TestSettings(this.isEnabled);

@@ -631,6 +631,12 @@ class _ReviewAnswer extends ConsumerWidget {
                 currentPosition: ref
                     .read(shortAudioPlayerProvider)
                     .currentPosition,
+                playbackStatus: ref
+                    .read(shortAudioPlayerProvider)
+                    .wordHighlightPlaybackStatus,
+                playbackStatusStream: ref
+                    .read(shortAudioPlayerProvider)
+                    .wordHighlightPlaybackStatusStream,
               ),
               senseGroupRangePlayback: ref.read(
                 senseGroupRangePlaybackProvider,

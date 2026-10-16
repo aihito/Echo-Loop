@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:echo_loop/models/word_highlight_binding.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:echo_loop/services/pronunciation/local_audio_clip_player.dart';
@@ -49,10 +50,18 @@ void main() {
     final backend = _FakeBackend();
     final player = LocalAudioClipPlayer(backend: backend);
     final result = player.playFile('/audio/read.opus');
+    expect(
+      player.wordHighlightPlaybackStatus,
+      WordHighlightPlaybackStatus.playing,
+    );
     await Future<void>.delayed(Duration.zero);
     expect(backend.opened, ['/audio/read.opus']);
     backend.completedController.add(null);
     expect(await result, AudioPlaybackResult.completed);
+    expect(
+      player.wordHighlightPlaybackStatus,
+      WordHighlightPlaybackStatus.completed,
+    );
     expect(backend.stops, 1);
     await player.dispose();
   });
@@ -179,6 +188,10 @@ void main() {
       await player.stop();
 
       expect(await playback, AudioPlaybackResult.cancelled);
+      expect(
+        player.wordHighlightPlaybackStatus,
+        WordHighlightPlaybackStatus.paused,
+      );
       expect(player.state.playingKey, isNull);
       expect(states.map((state) => state.playingKey), ['source:1', null]);
       await subscription.cancel();

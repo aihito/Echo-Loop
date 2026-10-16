@@ -41,25 +41,41 @@ class WordHighlightBuilder extends ConsumerWidget {
 
     final start = Duration(milliseconds: currentBinding.sentenceStartMs);
     final end = Duration(milliseconds: currentBinding.sentenceEndMs);
-    return StreamBuilder<Duration>(
-      key: ValueKey(
-        '${currentBinding.source.audioItemId}:'
-        '${currentBinding.sentenceStartMs}:${currentBinding.sentenceEndMs}',
-      ),
-      stream: currentBinding.source.positionStream,
-      initialData: currentBinding.source.currentPosition,
+    final source = currentBinding.source;
+    final sourceKey = (
+      source.audioItemId,
+      currentBinding.sentenceStartMs,
+      currentBinding.sentenceEndMs,
+    );
+    return StreamBuilder<WordHighlightPlaybackStatus>(
+      key: ValueKey((sourceKey, source.playbackStatusStream)),
+      stream: source.playbackStatusStream,
+      initialData: source.playbackStatus,
       builder: (context, snapshot) {
-        final position = snapshot.data;
-        final activeWordIndex = snapshot.hasError || position == null
-            ? null
-            : resolveActiveWordIndex(
-                text: text,
-                timestamps: timestamps,
-                sentenceStart: start,
-                sentenceEnd: end,
-                position: position,
-              );
-        return builder(context, activeWordIndex);
+        final playbackStatus = snapshot.data;
+        return StreamBuilder<Duration>(
+          key: ValueKey((sourceKey, source.positionStream)),
+          stream: source.positionStream,
+          initialData: source.currentPosition,
+          builder: (context, positionSnapshot) {
+            final position = positionSnapshot.data;
+            final highlightEnabled =
+                !snapshot.hasError && playbackStatus?.allowsHighlight == true;
+            final activeWordIndex =
+                !highlightEnabled ||
+                    positionSnapshot.hasError ||
+                    position == null
+                ? null
+                : resolveActiveWordIndex(
+                    text: text,
+                    timestamps: timestamps,
+                    sentenceStart: start,
+                    sentenceEnd: end,
+                    position: position,
+                  );
+            return builder(context, activeWordIndex);
+          },
+        );
       },
     );
   }

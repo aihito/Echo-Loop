@@ -8,6 +8,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../models/audio_item.dart';
 import '../../models/media_engine_state.dart';
 import '../../models/sentence_playback_result.dart';
+import '../../models/word_highlight_binding.dart';
 import '../../services/background_audio_handler.dart';
 import '../../services/echo_loop_media_handler.dart';
 import '../../services/app_logger.dart';
@@ -15,6 +16,7 @@ import '../../services/media_kit_player_backend.dart';
 import '../../services/media_kit_debug_initializer.dart';
 import '../../services/media_player_backend.dart';
 import '../../services/media_session_router.dart';
+import '../../services/word_highlight_playback_status_tracker.dart';
 
 part 'media_engine_provider.g.dart';
 
@@ -39,10 +41,16 @@ class MediaEngine extends _$MediaEngine {
   int _activeRangeSessionId = 0;
   Future<void> _commandTail = Future<void>.value();
   int _resourceGeneration = 0;
+  final WordHighlightPlaybackStatusTracker _wordHighlightPlaybackStatus =
+      WordHighlightPlaybackStatusTracker();
+  StreamSubscription<bool>? _wordHighlightPlayingSubscription;
+  StreamSubscription<void>? _wordHighlightCompletedSubscription;
+  int? _wordHighlightCompletionSessionId;
 
   @override
   MediaEngineState build() {
     ref.onDispose(() {
+      unawaited(_wordHighlightPlaybackStatus.dispose());
       // Provider 销毁也必须进入同一生命周期队列，不能和页面 detach 并发操作
       // 同一个 native Player。
       unawaited(
@@ -74,6 +82,7 @@ class MediaEngine extends _$MediaEngine {
     _backend = backend;
     _handler = handler;
     _router = router;
+    _listenToWordHighlightPlayback(backend);
     _resourceGeneration += 1;
     AppLogger.log(
       'MediaEngine',
@@ -81,6 +90,44 @@ class MediaEngine extends _$MediaEngine {
     );
     unawaited(handler.prepareArtwork());
     unawaited(handler.configureInterruptions());
+  }
+
+  /// 只接受当前 backend、当前 session 的自然结束事件。
+  void _listenToWordHighlightPlayback(MediaPlayerBackend backend) {
+    _wordHighlightPlaybackStatus.reset();
+    _wordHighlightCompletionSessionId = null;
+    _wordHighlightPlayingSubscription = backend.playingStream.listen(
+      (_) {
+        if (!identical(_backend, backend)) return;
+        final sessionId = _wordHighlightCompletionSessionId;
+        _wordHighlightPlaybackStatus.observePlayerState(
+          isPlaying:
+              backend.playing &&
+              sessionId != null &&
+              isActiveSession(sessionId),
+          isCompleted: false,
+        );
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        AppLogger.log('MediaEngine', '逐词高亮播放状态流失败: $error\n$stackTrace');
+      },
+    );
+    _wordHighlightCompletedSubscription = backend.completedStream.listen(
+      (_) {
+        final sessionId = _wordHighlightCompletionSessionId;
+        if (!identical(_backend, backend) ||
+            sessionId == null ||
+            !isActiveSession(sessionId) ||
+            backend.playing) {
+          return;
+        }
+        _wordHighlightCompletionSessionId = null;
+        _wordHighlightPlaybackStatus.markCompleted();
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        AppLogger.log('MediaEngine', '逐词高亮自然结束流失败: $error\n$stackTrace');
+      },
+    );
   }
 
   Future<void> disposeChain() async {
@@ -133,6 +180,8 @@ class MediaEngine extends _$MediaEngine {
           'handler=${identityHashCode(_handler)}',
     );
     _invalidateRangeRequest('dispose-$reason');
+    _wordHighlightCompletionSessionId = null;
+    _wordHighlightPlaybackStatus.reset();
     _disposingChain = true;
     final handler = _handler;
     final backend = _backend;
@@ -171,6 +220,10 @@ class MediaEngine extends _$MediaEngine {
       if (error != null) {
         throw error;
       }
+      await _wordHighlightPlayingSubscription?.cancel();
+      _wordHighlightPlayingSubscription = null;
+      await _wordHighlightCompletedSubscription?.cancel();
+      _wordHighlightCompletedSubscription = null;
       // 只有整条释放链成功后才清空引用。失败时保留唯一 owner，允许后续
       // 显式重试，而不是把仍可能存活的 native 资源变成不可达泄漏。
       _handler = null;
@@ -207,6 +260,8 @@ class MediaEngine extends _$MediaEngine {
     double speed, {
     required Duration initialPosition,
   }) async {
+    _wordHighlightCompletionSessionId = null;
+    _wordHighlightPlaybackStatus.reset();
     AppLogger.log(
       'MediaEngine',
       'loadMedia: begin id=${item.id} session=${state.sessionId} '
@@ -303,9 +358,7 @@ class MediaEngine extends _$MediaEngine {
     }
 
     final mediaItemSub = router.mediaItem.listen(completeMediaItem);
-    final playbackStateSub = router.playbackState.listen(
-      completePlaybackState,
-    );
+    final playbackStateSub = router.playbackState.listen(completePlaybackState);
     completeMediaItem(router.mediaItem.value);
     completePlaybackState(router.playbackState.value);
 
@@ -331,12 +384,22 @@ class MediaEngine extends _$MediaEngine {
   int newSession() {
     final next = state.sessionId + 1;
     state = state.copyWith(sessionId: next);
+    _wordHighlightCompletionSessionId = null;
+    _wordHighlightPlaybackStatus.prepareForPlayback();
     return next;
   }
 
   bool isActiveSession(int id) => id == state.sessionId;
 
   int get currentSessionId => state.sessionId;
+
+  /// 当前逐词高亮播放生命周期状态。
+  WordHighlightPlaybackStatus get wordHighlightPlaybackStatus =>
+      _wordHighlightPlaybackStatus.status;
+
+  /// 逐词高亮播放生命周期状态流。
+  Stream<WordHighlightPlaybackStatus> get wordHighlightPlaybackStatusStream =>
+      _wordHighlightPlaybackStatus.stream;
 
   /// 已解码视频的显示方向，已由后端处理旋转元数据。
   bool? get isLandscapeVideo => _backend?.isLandscapeVideo;
@@ -351,27 +414,47 @@ class MediaEngine extends _$MediaEngine {
       _backend?.videoAspectRatioStream ?? const Stream<double?>.empty();
 
   Future<void> play() => _enqueueLifecycle('play', () async {
-    await _handler?.playBackend();
+    final handler = _handler;
+    if (handler == null) return;
+    final sessionId = state.sessionId;
+    _wordHighlightCompletionSessionId = sessionId;
+    _wordHighlightPlaybackStatus.markPlaying();
+    try {
+      await handler.playBackend();
+    } catch (_) {
+      if (_wordHighlightCompletionSessionId == sessionId) {
+        _wordHighlightCompletionSessionId = null;
+        _wordHighlightPlaybackStatus.reset();
+      }
+      rethrow;
+    }
   });
 
   Future<void> pause() async {
+    _wordHighlightCompletionSessionId = null;
     _invalidateRangeRequest('legacy-pause');
     state = state.copyWith(sessionId: state.sessionId + 1);
     await _enqueueLifecycle('pause', () async {
       await _handler?.pauseBackend();
+      _wordHighlightPlaybackStatus.markPaused();
     });
   }
 
-  Future<void> pauseKeepSession() =>
-      _enqueueLifecycle('pause-keep-session', () async {
-        await _handler?.pauseBackend();
-      });
+  Future<void> pauseKeepSession() {
+    _wordHighlightCompletionSessionId = null;
+    return _enqueueLifecycle('pause-keep-session', () async {
+      await _handler?.pauseBackend();
+      _wordHighlightPlaybackStatus.markPaused();
+    });
+  }
 
   Future<void> stop() async {
+    _wordHighlightCompletionSessionId = null;
     _invalidateRangeRequest('legacy-stop');
     state = state.copyWith(sessionId: state.sessionId + 1);
     await _enqueueLifecycle('stop', () async {
       await _handler?.stop();
+      _wordHighlightPlaybackStatus.reset();
     });
   }
 
@@ -383,6 +466,7 @@ class MediaEngine extends _$MediaEngine {
 
   /// 释放页面所有权，但不销毁全局共享的 native Player。
   Future<void> _detachFromScreen({required String reason}) async {
+    _wordHighlightCompletionSessionId = null;
     AppLogger.log(
       'MediaEngine',
       'detachFromScreen: begin reason=$reason session=${state.sessionId} '
@@ -399,6 +483,7 @@ class MediaEngine extends _$MediaEngine {
     Object? pauseError;
     try {
       await handler?.pauseBackend();
+      _wordHighlightPlaybackStatus.markPaused();
     } catch (error) {
       pauseError = error;
       AppLogger.log(
@@ -418,7 +503,14 @@ class MediaEngine extends _$MediaEngine {
   }
 
   Future<void> seek(Duration pos) => _enqueueLifecycle('seek', () async {
+    final wasPlaying = _backend?.playing ?? false;
     await _handler?.seek(pos);
+    if (wasPlaying) {
+      _wordHighlightPlaybackStatus.markPlaying();
+    } else {
+      _wordHighlightCompletionSessionId = null;
+      _wordHighlightPlaybackStatus.markPositionSelected();
+    }
   });
 
   Future<void> setSpeed(double speed) =>
@@ -521,6 +613,8 @@ class MediaEngine extends _$MediaEngine {
       return SentencePlaybackResult.cancelled;
     }
 
+    _wordHighlightCompletionSessionId = null;
+    _wordHighlightPlaybackStatus.prepareForPlayback();
     final requestId = ++_rangeRequestId;
     _hasActiveRangeRequest = true;
     _activeRangeSessionId = rangeSessionId;
@@ -584,6 +678,8 @@ class MediaEngine extends _$MediaEngine {
         try {
           // seek 已完成且请求仍有效，调用方此刻才能安全订阅位置流。
           onRangeReady?.call();
+          _wordHighlightCompletionSessionId = rangeSessionId;
+          _wordHighlightPlaybackStatus.markPlaying();
           await handler.playBackend();
           return _isActiveRangeRequest(requestId)
               ? SentencePlaybackResult.completed
@@ -593,6 +689,10 @@ class MediaEngine extends _$MediaEngine {
             'MediaEngine Range',
             'failed: id=$requestId play-error=$error',
           );
+          if (_isActiveRangeRequest(requestId)) {
+            _wordHighlightCompletionSessionId = null;
+            _wordHighlightPlaybackStatus.reset();
+          }
           _invalidateRangeRequest('play-failed');
           return SentencePlaybackResult.failed;
         }
@@ -607,6 +707,8 @@ class MediaEngine extends _$MediaEngine {
     if (result == SentencePlaybackResult.completed) {
       await _enqueueRangeControl('range-finish-$requestId', () async {
         if (_isActiveRangeRequest(requestId)) {
+          _wordHighlightCompletionSessionId = null;
+          _wordHighlightPlaybackStatus.markCompleted();
           await _handler?.pauseBackend();
         }
       });
@@ -627,9 +729,11 @@ class MediaEngine extends _$MediaEngine {
       'cancel request: reason=$reason active=$_hasActiveRangeRequest '
           'rangeId=$_rangeRequestId',
     );
+    _wordHighlightCompletionSessionId = null;
     _invalidateRangeRequest(reason);
     await _enqueueRangeControl('range-cancel-$reason', () async {
       await _handler?.pauseBackend();
+      _wordHighlightPlaybackStatus.markPaused();
     });
   }
 
@@ -802,9 +906,15 @@ class MediaEngine extends _$MediaEngine {
         return false;
       }
       try {
+        _wordHighlightCompletionSessionId = sessionId;
+        _wordHighlightPlaybackStatus.markPlaying();
         await handler.playBackend();
         return true;
       } catch (error, stackTrace) {
+        if (_wordHighlightCompletionSessionId == sessionId) {
+          _wordHighlightCompletionSessionId = null;
+          _wordHighlightPlaybackStatus.reset();
+        }
         AppLogger.log(
           'MediaEngine',
           'playToEnd play failed session=$sessionId error=$error\n$stackTrace',
@@ -853,6 +963,13 @@ class MediaEngine extends _$MediaEngine {
         'backend completed event session=$sessionId '
             'position=${backend.position.inMilliseconds}ms playing=${backend.playing}',
       );
+      if (isActiveSession(sessionId) &&
+          identical(_backend, backend) &&
+          _wordHighlightCompletionSessionId == sessionId &&
+          !backend.playing) {
+        _wordHighlightCompletionSessionId = null;
+        _wordHighlightPlaybackStatus.markCompleted();
+      }
       finish();
     });
     guard = Timer.periodic(const Duration(milliseconds: 200), (_) {

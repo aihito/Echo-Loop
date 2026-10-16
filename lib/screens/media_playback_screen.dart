@@ -482,6 +482,8 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
       audioItemId: audioItemId,
       positionStream: engine.positionStream,
       currentPosition: engine.currentPosition,
+      playbackStatus: engine.wordHighlightPlaybackStatus,
+      playbackStatusStream: engine.wordHighlightPlaybackStatusStream,
     );
   }
 

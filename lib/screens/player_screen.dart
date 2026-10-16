@@ -451,6 +451,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       audioItemId: audioItemId,
       positionStream: engine.absolutePositionStream,
       currentPosition: engine.absoluteCurrentPosition,
+      playbackStatus: engine.wordHighlightPlaybackStatus,
+      playbackStatusStream: engine.wordHighlightPlaybackStatusStream,
     );
   }
 
