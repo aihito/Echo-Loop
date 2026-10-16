@@ -1803,6 +1803,7 @@ class FakeReviewDifficultPractice extends ReviewDifficultPractice {
     DifficultPracticeSettings settings = const DifficultPracticeSettings(),
     String? settingsSlot,
     SentencePlaybackDriver? playbackDriver,
+    SenseGroupRangePlayback? senseGroupRangePlayback,
     bool usesMediaEngine = false,
   }) async {
     testSentences = List.of(sentences);

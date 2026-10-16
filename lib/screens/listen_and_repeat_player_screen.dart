@@ -727,6 +727,8 @@ class _ListenAndRepeatPlayerScreenState
                                             audioItemId: widget.audioItemId,
                                             wordHighlightSource:
                                                 wordHighlightSource,
+                                            senseGroupRangePlayback:
+                                                ctrl.senseGroupRangePlayback,
                                             sentenceIndex: sentence.index,
                                             sentenceStartMs: sentence
                                                 .startTime

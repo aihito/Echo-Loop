@@ -30,6 +30,7 @@ import '../../services/study_session_timer.dart';
 import '../../services/study_time_service.dart';
 import '../audio_engine/audio_engine_provider.dart';
 import '../audio_engine/foreground_audio_engine_provider.dart';
+import '../audio_engine/foreground_sense_group_range_playback.dart';
 import '../daily_study_time_provider.dart';
 import '../study_duration_provider.dart';
 import '../study_stats_provider.dart';
@@ -155,6 +156,7 @@ class ListenAndRepeatController extends _$ListenAndRepeatController {
     double smartSpeed = 1.0,
     LearningStage? stage,
     SentencePlaybackDriver? playbackDriver,
+    SenseGroupRangePlayback? senseGroupRangePlayback,
     bool usesMediaEngine = false,
   }) async {
     AppLogger.log(
@@ -171,6 +173,7 @@ class ListenAndRepeatController extends _$ListenAndRepeatController {
         smartSpeed: smartSpeed,
         stage: stage,
         playbackDriver: playbackDriver,
+        senseGroupRangePlayback: senseGroupRangePlayback,
         usesMediaEngine: usesMediaEngine,
       );
     } catch (error, stackTrace) {
@@ -191,6 +194,7 @@ class ListenAndRepeatController extends _$ListenAndRepeatController {
     double smartSpeed = 1.0,
     LearningStage? stage,
     SentencePlaybackDriver? playbackDriver,
+    SenseGroupRangePlayback? senseGroupRangePlayback,
     bool usesMediaEngine = false,
   }) async {
     final entryGeneration = ++_entryGeneration;
@@ -203,7 +207,15 @@ class ListenAndRepeatController extends _$ListenAndRepeatController {
     _sessionPrepared = false;
     _isFreePlay = isFreePlay;
     _usesMediaEngine = usesMediaEngine;
-    if (!usesMediaEngine) _senseGroupRangePlayback = null;
+    _senseGroupRangePlayback =
+        senseGroupRangePlayback ??
+        (usesMediaEngine
+            ? null
+            : ForegroundSenseGroupRangePlayback(
+                engine: ref.read(foregroundAudioEngineProvider.notifier),
+                playbackSpeed: () =>
+                    ref.read(listenAndRepeatSettingsProvider).playbackSpeed,
+              ));
     _playback =
         playbackDriver ??
         ForegroundSentencePlaybackDriver(
@@ -415,7 +427,7 @@ class ListenAndRepeatController extends _$ListenAndRepeatController {
       return MediaLoadResult.cancelled;
     }
 
-    _senseGroupRangePlayback = MediaSenseGroupRangePlayback(
+    final senseGroupRangePlayback = MediaSenseGroupRangePlayback(
       engine: mediaEngine,
       playbackSpeed: () =>
           ref.read(listenAndRepeatSettingsProvider).playbackSpeed,
@@ -428,6 +440,7 @@ class ListenAndRepeatController extends _$ListenAndRepeatController {
       smartSpeed: smartSpeed,
       stage: stage,
       playbackDriver: MediaSentencePlaybackDriver(mediaEngine),
+      senseGroupRangePlayback: senseGroupRangePlayback,
       usesMediaEngine: true,
     );
     if (!isCurrent()) {
@@ -552,7 +565,7 @@ class ListenAndRepeatController extends _$ListenAndRepeatController {
   /// 停止录音回放
   Future<void> stopPlayback() async => _engine.stopPlayback();
 
-  /// 当前媒体会话的意群区间播放；音频会话保持既有播放路径，因此不暴露实现。
+  /// 当前会话的意群区间播放器，与正文逐词高亮使用同一播放引擎。
   SenseGroupRangePlayback? get senseGroupRangePlayback =>
       _senseGroupRangePlayback;
 

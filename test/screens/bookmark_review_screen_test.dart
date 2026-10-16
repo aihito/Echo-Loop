@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:echo_loop/database/daos/bookmark_dao.dart';
 import 'package:echo_loop/database/providers.dart';
 import 'package:echo_loop/features/onboarding_survey/providers/onboarding_survey_provider.dart';
+import 'package:echo_loop/features/remote_config/remote_config.dart';
+import 'package:echo_loop/features/user_region/user_region_bootstrapper.dart';
+import 'package:echo_loop/features/user_region/user_region_providers.dart';
 import 'package:echo_loop/features/memory_scheduler/domain/memory_rating.dart';
 import 'package:echo_loop/features/memory_scheduler/domain/memory_model_adapter.dart';
 import 'package:echo_loop/features/memory_scheduler/domain/memory_scheduler_results.dart';
@@ -19,14 +22,13 @@ import 'package:echo_loop/providers/dictionary/visible_sources_provider.dart';
 import 'package:echo_loop/providers/learning_session/bookmark_review_provider.dart';
 import 'package:echo_loop/providers/bookmark_review_settings_provider.dart';
 import 'package:echo_loop/providers/favorite_review_settings_provider.dart';
-import 'package:echo_loop/providers/audio_engine/foreground_sense_group_range_playback.dart';
 import 'package:echo_loop/providers/sentence_ai_provider.dart';
-import 'package:echo_loop/providers/sense_group_range_playback_provider.dart';
 import 'package:echo_loop/providers/short_audio_player_provider.dart';
 import 'package:echo_loop/screens/bookmark_review_screen.dart';
 import 'package:echo_loop/services/sentence_ai_api_client.dart';
 import 'package:echo_loop/services/dictionary/dictionary_source.dart';
 import 'package:echo_loop/services/pronunciation/local_audio_clip_player.dart';
+import 'package:echo_loop/services/pronunciation/local_audio_sense_group_range_playback.dart';
 import 'package:echo_loop/widgets/dictionary/dictionary_panel_host.dart';
 import 'package:echo_loop/widgets/practice/sentence_explanation_view.dart';
 import 'package:echo_loop/widgets/review/review_completion_summary.dart';
@@ -253,6 +255,13 @@ Widget _app({
       analyticsOverride(),
       dictionaryOverride(),
       sharedPreferencesProvider.overrideWithValue(_sharedPreferences),
+      userRegionBootstrapProvider.overrideWith(
+        (ref) async => const UserRegionBootstrapResult(
+          isChinaUser: false,
+          source: UserRegionDecisionSource.systemFallback,
+          remoteConfig: RemoteConfig.defaults,
+        ),
+      ),
       dictionarySourcesProvider.overrideWithValue([_dictionarySource]),
       dictionarySourcesByIdProvider.overrideWithValue({
         _dictionarySource.id: _dictionarySource,
@@ -432,23 +441,23 @@ void main() {
     );
   });
 
-  testWidgets(
-    'back explanation resolves sense-group playback to foreground domain',
-    (tester) async {
-      await tester.pumpWidget(_app());
-      await tester.pump();
-      await tester.tap(find.byKey(const Key('bookmark-review-reveal-zone')));
-      await tester.pump();
+  testWidgets('back explanation uses the local clip playback adapter', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_app());
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('bookmark-review-reveal-zone')));
+    await tester.pump();
 
-      final annotation = find.byType(SentenceExplanationView);
-      expect(annotation, findsOneWidget);
-      final container = ProviderScope.containerOf(tester.element(annotation));
-      expect(
-        container.read(senseGroupRangePlaybackProvider),
-        isA<ForegroundSenseGroupRangePlayback>(),
-      );
-    },
-  );
+    final annotation = find.byType(SentenceExplanationView);
+    expect(annotation, findsOneWidget);
+    final explanation = tester.widget<SentenceExplanationView>(annotation);
+    expect(
+      explanation.senseGroupRangePlayback,
+      isA<LocalAudioSenseGroupRangePlayback>(),
+    );
+    expect(explanation.wordHighlightSource?.audioItemId, 'audio-1');
+  });
 
   testWidgets('page owns the back explanation dictionary panel host', (
     tester,

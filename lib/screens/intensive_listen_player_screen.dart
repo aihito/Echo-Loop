@@ -810,6 +810,8 @@ class _IntensiveListenPlayerScreenState
                                               audioItemId: widget.audioItemId,
                                               wordHighlightSource:
                                                   wordHighlightSource,
+                                              senseGroupRangePlayback: player
+                                                  .senseGroupRangePlayback,
                                               sentenceIndex: sentence.index,
                                               sentenceStartMs: sentence
                                                   .startTime

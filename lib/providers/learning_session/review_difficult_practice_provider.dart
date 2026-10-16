@@ -20,11 +20,13 @@ import '../../database/providers.dart';
 import '../../models/difficult_practice_settings.dart';
 import '../../models/sentence.dart';
 import '../../models/sentence_playback_result.dart';
+import '../../models/sense_group_range_playback.dart';
 import '../../models/study_stage.dart';
 import '../../services/app_logger.dart';
 import '../../services/study_session_timer.dart';
 import '../../services/study_time_service.dart';
 import '../audio_engine/foreground_audio_engine_provider.dart';
+import '../audio_engine/foreground_sense_group_range_playback.dart';
 import '../blind_flow/blind_practice_flow_engine.dart';
 import '../blind_flow/blind_practice_flow_phase.dart';
 import '../blind_flow/blind_practice_flow_state.dart';
@@ -236,6 +238,9 @@ class ReviewDifficultPractice extends _$ReviewDifficultPractice {
   /// 当前会话句子播放驱动；音频与视频共用同一练习状态机。
   late SentencePlaybackDriver _playback;
 
+  /// 当前会话意群区间播放器，与正文逐词高亮共用播放时间源。
+  SenseGroupRangePlayback? _senseGroupRangePlayback;
+
   /// 跟读流程引擎（跟读模式时创建，退出时销毁）
   RepeatFlowEngine? _repeatEngine;
 
@@ -283,6 +288,7 @@ class ReviewDifficultPractice extends _$ReviewDifficultPractice {
     DifficultPracticeSettings settings = const DifficultPracticeSettings(),
     String? settingsSlot,
     SentencePlaybackDriver? playbackDriver,
+    SenseGroupRangePlayback? senseGroupRangePlayback,
     bool usesMediaEngine = false,
   }) async {
     _studySessionGeneration += 1;
@@ -294,6 +300,14 @@ class ReviewDifficultPractice extends _$ReviewDifficultPractice {
         ForegroundSentencePlaybackDriver(
           ref.read(foregroundAudioEngineProvider.notifier),
         );
+    _senseGroupRangePlayback =
+        senseGroupRangePlayback ??
+        (usesMediaEngine
+            ? null
+            : ForegroundSenseGroupRangePlayback(
+                engine: ref.read(foregroundAudioEngineProvider.notifier),
+                playbackSpeed: () => state.settings.playbackSpeed,
+              ));
     _blindEngine.dispose();
     _blindEngine = _createBlindEngine();
     _repeatEngine?.dispose();
@@ -349,6 +363,10 @@ class ReviewDifficultPractice extends _$ReviewDifficultPractice {
 
   /// 当前页面累计的有效学习时长，供学习会话埋点使用。
   Duration get elapsed => _studySessionTimer?.elapsed ?? Duration.zero;
+
+  /// 当前会话注入的意群区间播放器。
+  SenseGroupRangePlayback? get senseGroupRangePlayback =>
+      _senseGroupRangePlayback;
 
   /// 更新设置并重新开始当前句
   Future<void> updateSettings(DifficultPracticeSettings newSettings) async {

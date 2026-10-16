@@ -731,6 +731,8 @@ class _ReviewDifficultPracticeScreenState
                                               audioItemId: widget.audioItemId,
                                               wordHighlightSource:
                                                   wordHighlightSource,
+                                              senseGroupRangePlayback: player
+                                                  .senseGroupRangePlayback,
                                               sentenceIndex:
                                                   player.currentIndex,
                                               sentenceStartMs: sentence

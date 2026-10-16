@@ -12,15 +12,15 @@ import '../features/memory_scheduler/domain/memory_rating.dart';
 import '../features/memory_scheduler/domain/memory_scheduler_results.dart';
 import '../features/scheduled_flashcard/widgets/flashcard_rating_action_bar.dart';
 import '../l10n/app_localizations.dart';
+import '../database/providers.dart';
 import '../models/bookmark_sentence.dart';
 import '../models/word_highlight_binding.dart';
-import '../providers/audio_engine/foreground_audio_engine_provider.dart';
 import '../providers/favorite_review_settings_provider.dart';
 import '../providers/short_audio_player_provider.dart';
-import '../providers/audio_engine/foreground_sense_group_range_playback.dart';
 import '../providers/learning_session/bookmark_review_provider.dart';
 import '../providers/sentence_ai_provider.dart';
 import '../providers/sense_group_range_playback_provider.dart';
+import '../services/pronunciation/local_audio_sense_group_range_playback.dart';
 import '../router/app_router.dart';
 import '../theme/app_theme.dart';
 import '../utils/time_format.dart';
@@ -220,12 +220,13 @@ class _BookmarkReviewScreenState extends ConsumerState<BookmarkReviewScreen>
                                     senseGroupRangePlaybackProvider
                                         .overrideWith(
                                           (ref) =>
-                                              ForegroundSenseGroupRangePlayback(
-                                                engine: ref.read(
-                                                  foregroundAudioEngineProvider
-                                                      .notifier,
+                                              LocalAudioSenseGroupRangePlayback(
+                                                audioItemDao: ref.read(
+                                                  audioItemDaoProvider,
                                                 ),
-                                                playbackSpeed: () => 1.0,
+                                                audioClipPlayer: ref.read(
+                                                  shortAudioPlayerProvider,
+                                                ),
                                               ),
                                         ),
                                   ],

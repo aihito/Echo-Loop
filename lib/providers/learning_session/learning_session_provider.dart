@@ -1150,6 +1150,13 @@ class LearningSession extends _$LearningSession {
             stage,
           ),
           playbackDriver: MediaSentencePlaybackDriver(mediaEngine),
+          senseGroupRangePlayback: MediaSenseGroupRangePlayback(
+            engine: mediaEngine,
+            playbackSpeed: () => ref
+                .read(reviewDifficultPracticeProvider)
+                .settings
+                .playbackSpeed,
+          ),
           usesMediaEngine: true,
         );
     if (!isCurrentGeneration()) {
