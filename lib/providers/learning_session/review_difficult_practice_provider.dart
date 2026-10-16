@@ -232,6 +232,9 @@ class ReviewDifficultPractice extends _$ReviewDifficultPractice {
   /// 统计会话代际，防止旧播放或录音回调污染新会话。
   int _studySessionGeneration = 0;
 
+  /// 难句切换请求编号，串联一次导航的状态提交和播放器收尾日志。
+  int _navigationRequestSequence = 0;
+
   /// 录音控制器实例；保存后可在 Provider 销毁阶段完成异步收尾，避免再次读取 ref。
   late final SpeechRecordingController _speechController;
 
@@ -500,6 +503,11 @@ class ReviewDifficultPractice extends _$ReviewDifficultPractice {
   void enterAnnotationMode() {
     if (state.isAnnotationMode) return;
 
+    AppLogger.log(
+      'RDP-Navigation',
+      'event=annotation-enter sentenceIndex=${state.currentSentenceIndex} '
+          'fromMode=blind media=${state.usesMediaEngine}',
+    );
     unawaited(_playback.invalidateSession());
     _blindEngine.stopSession();
     _startRepeatFlow();
@@ -608,15 +616,59 @@ class ReviewDifficultPractice extends _$ReviewDifficultPractice {
   ///
   /// 供进度条拖动跳转使用：越界自动 clamp，目标与当前相同时直接返回。
   Future<void> goToSentence(int index) async {
-    if (state.totalSentences <= 0) return;
+    final requestId = ++_navigationRequestSequence;
+    final fromIndex = state.currentSentenceIndex;
+    if (state.totalSentences <= 0) {
+      AppLogger.log(
+        'RDP-Navigation',
+        'event=request-ignored id=$requestId reason=no-sentences '
+            'requestedIndex=$index',
+      );
+      return;
+    }
     final target = index.clamp(0, state.totalSentences - 1);
-    if (target == state.currentSentenceIndex) return;
-    await _goToSentenceIndex(target);
+    final mode = state.isAnnotationMode ? 'annotation' : 'blind';
+    AppLogger.log(
+      'RDP-Navigation',
+      'event=request id=$requestId source=goToSentence mode=$mode '
+          'fromIndex=$fromIndex requestedIndex=$index targetIndex=$target '
+          'totalSentences=${state.totalSentences} '
+          'media=${state.usesMediaEngine}',
+    );
+    if (target == fromIndex) {
+      AppLogger.log(
+        'RDP-Navigation',
+        'event=request-ignored id=$requestId reason=already-at-target '
+            'currentIndex=$fromIndex',
+      );
+      return;
+    }
+    await _goToSentenceIndex(
+      target,
+      requestId: requestId,
+      fromIndex: fromIndex,
+      fromMode: mode,
+    );
+    AppLogger.log(
+      'RDP-Navigation',
+      'event=complete id=$requestId currentIndex=${state.currentSentenceIndex} '
+          'phase=${state.blindFlowState?.phase.runtimeType}',
+    );
   }
 
   /// 切换到指定句子并重启盲听 flow（goToNext/goToPrevious/goToSentence 共用）
-  Future<void> _goToSentenceIndex(int target) async {
-    unawaited(_playback.invalidateSession());
+  Future<void> _goToSentenceIndex(
+    int target, {
+    required int requestId,
+    required int fromIndex,
+    required String fromMode,
+  }) async {
+    AppLogger.log(
+      'RDP-Navigation',
+      'event=commit-start id=$requestId fromIndex=$fromIndex '
+          'targetIndex=$target fromMode=$fromMode '
+          'media=${state.usesMediaEngine}',
+    );
     _exitAnnotationMode();
     _blindEngine.stopSession();
     state = state.copyWith(
@@ -632,7 +684,7 @@ class ReviewDifficultPractice extends _$ReviewDifficultPractice {
       clearRepeatFlowState: true,
       clearBlindFlowState: true,
     );
-    await _startBlindFlow();
+    await _startBlindFlow(navigationId: requestId);
   }
 
   /// 暂停盲听倒计时
@@ -969,8 +1021,32 @@ class ReviewDifficultPractice extends _$ReviewDifficultPractice {
   ) async {
     final playback = _playback;
     final sessionId = playback.newSession();
-    await playback.setSpeed(state.settings.playbackSpeed);
-    final result = await playback.playSentence(sentence, sessionId);
+    AppLogger.log(
+      'RDP-Repeat',
+      'event=driver-play-start sentenceIndex=${sentence.index} '
+          'flowToken=$flowToken playbackSessionId=$sessionId',
+    );
+    late final SentencePlaybackResult result;
+    try {
+      await playback.setSpeed(state.settings.playbackSpeed);
+      result = await playback.playSentence(sentence, sessionId);
+    } catch (error) {
+      AppLogger.log(
+        'RDP-Repeat',
+        'event=driver-play-failed sentenceIndex=${sentence.index} '
+            'flowToken=$flowToken playbackSessionId=$sessionId '
+            'errorType=${error.runtimeType}',
+      );
+      rethrow;
+    }
+    AppLogger.log(
+      'RDP-Repeat',
+      'event=driver-play-result sentenceIndex=${sentence.index} '
+          'flowToken=$flowToken '
+          'currentFlowToken=${_repeatEngine?.state.flowToken} '
+          'playbackSessionId=$sessionId '
+          'sessionActive=${playback.isActiveSession(sessionId)} result=$result',
+    );
     if (result == SentencePlaybackResult.completed &&
         playback.isActiveSession(sessionId)) {
       _recordSentencePlayback(sentence);
@@ -1046,9 +1122,38 @@ class ReviewDifficultPractice extends _$ReviewDifficultPractice {
   }
 
   /// 启动盲听流程。
-  Future<void> _startBlindFlow({bool autoplay = true}) async {
+  Future<void> _startBlindFlow({
+    bool autoplay = true,
+    int? navigationId,
+  }) async {
     if (_sentences.isEmpty) return;
     _prepareBlindFlow();
+    // 准备阶段会异步暂停旧流程的音频。等播放器收尾完成后再启动新句，
+    // 避免旧会话的 pause 抢停刚启动的目标句。
+    final invalidation = Stopwatch()..start();
+    AppLogger.log(
+      'RDP-Navigation',
+      'event=playback-invalidation-start navigationId=$navigationId '
+          'sentenceIndex=${state.currentSentenceIndex} '
+          'driver=${state.usesMediaEngine ? 'media' : 'foreground-audio'}',
+    );
+    try {
+      await _playback.invalidateSession();
+    } catch (error) {
+      AppLogger.log(
+        'RDP-Navigation',
+        'event=playback-invalidation-failed navigationId=$navigationId '
+            'sentenceIndex=${state.currentSentenceIndex} '
+            'errorType=${error.runtimeType}',
+      );
+      rethrow;
+    }
+    AppLogger.log(
+      'RDP-Navigation',
+      'event=playback-invalidation-complete navigationId=$navigationId '
+          'sentenceIndex=${state.currentSentenceIndex} '
+          'elapsedMs=${invalidation.elapsedMilliseconds}',
+    );
     _persistCurrentSentenceIndexAsync();
     if (autoplay) {
       await _blindEngine.startPlaying();
@@ -1063,6 +1168,15 @@ class ReviewDifficultPractice extends _$ReviewDifficultPractice {
     final phase = flowState.phase;
     final interval = phase is BlindWaitingInterval ? phase : null;
     final sentenceChanged = previousIndex != flowState.sentenceIndex;
+
+    if (sentenceChanged) {
+      AppLogger.log(
+        'RDP-Navigation',
+        'event=flow-index-change fromIndex=$previousIndex '
+            'toIndex=${flowState.sentenceIndex} '
+            'phase=${phase.runtimeType} flowToken=${flowState.flowToken}',
+      );
+    }
 
     state = state.copyWith(
       blindFlowState: flowState,
@@ -1096,12 +1210,42 @@ class ReviewDifficultPractice extends _$ReviewDifficultPractice {
   }
 
   /// 播放一遍盲听原句。
-  Future<bool> _playSentenceForBlind(Sentence sentence, int flowToken) async {
+  Future<SentencePlaybackResult> _playSentenceForBlind(
+    Sentence sentence,
+    int flowToken,
+  ) async {
     final playback = _playback;
     final sessionId = playback.newSession();
-    await playback.setSpeed(state.settings.playbackSpeed);
-    return (await playback.playSentence(sentence, sessionId)) ==
-        SentencePlaybackResult.completed;
+    AppLogger.log(
+      'RDP-Blind',
+      'event=play-request-start sentenceIndex=${sentence.index} '
+          'flowToken=$flowToken playbackSessionId=$sessionId '
+          'driver=${state.usesMediaEngine ? 'media' : 'foreground-audio'}',
+    );
+    late final SentencePlaybackResult result;
+    try {
+      await playback.setSpeed(state.settings.playbackSpeed);
+      result = await playback.playSentence(sentence, sessionId);
+    } catch (error) {
+      AppLogger.log(
+        'RDP-Blind',
+        'event=play-request-failed sentenceIndex=${sentence.index} '
+            'flowToken=$flowToken playbackSessionId=$sessionId '
+            'errorType=${error.runtimeType}',
+      );
+      rethrow;
+    }
+    final currentFlowToken = _blindEngine.state.flowToken;
+    final sessionActive = playback.isActiveSession(sessionId);
+    AppLogger.log(
+      'RDP-Blind',
+      'event=play-request-result sentenceIndex=${sentence.index} '
+          'flowToken=$flowToken currentFlowToken=$currentFlowToken '
+          'playbackSessionId=$sessionId sessionActive=$sessionActive '
+          'result=$result',
+    );
+    if (flowToken != currentFlowToken) return SentencePlaybackResult.cancelled;
+    return result;
   }
 
   /// 异步保存断点
@@ -1123,8 +1267,17 @@ class ReviewDifficultPractice extends _$ReviewDifficultPractice {
 
   /// 跟读完成后直接进入下一句，不回到当前句的盲听倒计时。
   Future<void> _advanceAfterAnnotationCompleted() async {
+    final fromIndex = state.currentSentenceIndex;
+    final requestId = ++_navigationRequestSequence;
     final isLastSentence =
         state.currentSentenceIndex >= state.totalSentences - 1;
+    AppLogger.log(
+      'RDP-Navigation',
+      'event=request id=$requestId source=annotation-completed '
+          'fromIndex=$fromIndex '
+          'targetIndex=${isLastSentence ? 'complete' : fromIndex + 1} '
+          'totalSentences=${state.totalSentences}',
+    );
     if (isLastSentence) {
       state = state.copyWith(
         isPlaying: false,
@@ -1149,7 +1302,7 @@ class ReviewDifficultPractice extends _$ReviewDifficultPractice {
       clearRepeatFlowState: true,
       clearBlindFlowState: true,
     );
-    await _startBlindFlow();
+    await _startBlindFlow(navigationId: requestId);
   }
 
   /// 上报完成事件

@@ -18,13 +18,19 @@ class PracticeSentencePagerController {
   Future<void> animateAndCommit(
     int targetIndex, {
     required Future<void> Function() commit,
+    String source = 'control',
   }) async {
     final state = _state;
     if (state == null) {
+      AppLogger.log(
+        _sentencePagerLogTag,
+        'event=animate-commit-fallback source=$source '
+        'reason=pager-unattached targetIndex=$targetIndex',
+      );
       await commit();
       return;
     }
-    await state.animateAndCommit(targetIndex, commit: commit);
+    await state.animateAndCommit(targetIndex, commit: commit, source: source);
   }
 
   void _attach(_PracticeSentencePagerState state) => _state = state;
@@ -285,6 +291,11 @@ class _PracticeSentencePagerState extends State<PracticeSentencePager> {
 
   /// 分页锁仅覆盖业务回调的同步状态更新，句子播放在后台继续等待。
   Future<void> _commitSettledSentence(int target) async {
+    AppLogger.log(
+      _sentencePagerLogTag,
+      'event=gesture-commit fromIndex=${widget.currentIndex} '
+      'targetIndex=$target',
+    );
     late final Future<void> commit;
     try {
       commit = widget.onSentenceSettled(target);
@@ -298,14 +309,43 @@ class _PracticeSentencePagerState extends State<PracticeSentencePager> {
   Future<void> animateAndCommit(
     int targetIndex, {
     required Future<void> Function() commit,
+    required String source,
   }) async {
-    if (!mounted ||
-        _programmatic ||
-        _pendingTarget != null ||
-        _transitionInFlight ||
-        widget.isTransitionLocked) {
+    final rejectionReason = !mounted
+        ? 'unmounted'
+        : _programmatic
+        ? 'programmatic-animation-in-flight'
+        : _pendingTarget != null
+        ? 'pending-user-target'
+        : _transitionInFlight
+        ? 'transition-in-flight'
+        : widget.isTransitionLocked
+        ? 'transition-locked'
+        : null;
+    if (rejectionReason != null) {
+      AppLogger.log(
+        _sentencePagerLogTag,
+        'event=animate-commit-ignored source=$source '
+        'reason=$rejectionReason currentIndex=${widget.currentIndex} '
+        'targetIndex=$targetIndex',
+      );
       return;
     }
+    final fromIndex = widget.currentIndex;
+    if (targetIndex == fromIndex) {
+      AppLogger.log(
+        _sentencePagerLogTag,
+        'event=animate-commit-ignored source=$source '
+        'reason=already-at-target currentIndex=$fromIndex',
+      );
+      return;
+    }
+    AppLogger.log(
+      _sentencePagerLogTag,
+      'event=animate-commit-start source=$source fromIndex=$fromIndex '
+      'targetIndex=$targetIndex '
+      'page=${_pageController.hasClients ? _pageController.page?.toStringAsFixed(3) : 'unattached'}',
+    );
     _transitionInFlight = true;
     var shouldCommit = false;
     try {
@@ -314,8 +354,34 @@ class _PracticeSentencePagerState extends State<PracticeSentencePager> {
       _transitionInFlight = false;
       _scheduleDeferredPageSync();
     }
-    if (!shouldCommit || !mounted || widget.currentIndex == targetIndex) return;
+    final pageIndex = _pageController.hasClients
+        ? _pageController.page?.round()
+        : null;
+    if (!shouldCommit || !mounted || widget.currentIndex == targetIndex) {
+      final reason = !mounted
+          ? 'unmounted'
+          : !shouldCommit
+          ? 'target-page-not-reached'
+          : 'provider-already-at-target';
+      AppLogger.log(
+        _sentencePagerLogTag,
+        'event=animate-commit-result source=$source action=ignored '
+        'reason=$reason fromIndex=$fromIndex targetIndex=$targetIndex '
+        'currentIndex=${widget.currentIndex} pageIndex=$pageIndex',
+      );
+      return;
+    }
+    AppLogger.log(
+      _sentencePagerLogTag,
+      'event=animate-commit-result source=$source action=commit '
+      'fromIndex=$fromIndex targetIndex=$targetIndex pageIndex=$pageIndex',
+    );
     await commit();
+    AppLogger.log(
+      _sentencePagerLogTag,
+      'event=animate-commit-return source=$source targetIndex=$targetIndex '
+      'currentIndex=${widget.currentIndex}',
+    );
   }
 
   /// 分页锁只保护动画；业务提交可能包含整句播放，不能占住交互锁。

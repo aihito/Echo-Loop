@@ -45,6 +45,7 @@ import '../widgets/difficult_practice/difficult_practice_settings_sheet.dart';
 import '../widgets/practice/selectable_sentence_text.dart';
 import '../widgets/player_hotkey_scope.dart';
 import '../models/speech_practice_models.dart';
+import '../services/app_logger.dart';
 import '../providers/repeat_flow/repeat_flow_phase.dart';
 import '../providers/repeat_flow/repeat_flow_state.dart';
 import '../widgets/common/countdown_chip.dart';
@@ -578,8 +579,10 @@ class _ReviewDifficultPracticeScreenState
                   }
                 }
               : () {},
-          onPrevious: mediaReady ? _handlePrevious : () {},
-          onNext: mediaReady ? _handleNext : () {},
+          onPrevious: mediaReady
+              ? () => _handlePrevious(source: 'hotkey')
+              : () {},
+          onNext: mediaReady ? () => _handleNext(source: 'hotkey') : () {},
           child: PopScope(
             canPop: false,
             onPopInvokedWithResult: (didPop, _) {
@@ -692,7 +695,11 @@ class _ReviewDifficultPracticeScreenState
                                   horizontalPadding: const EdgeInsets.symmetric(
                                     horizontal: AppSpacing.m,
                                   ),
-                                  onSentenceSettled: _navigateToSentence,
+                                  onSentenceSettled: (index) =>
+                                      _navigateToSentence(
+                                        index,
+                                        source: 'swipe',
+                                      ),
                                   itemBuilder: (context, sentenceIndex) {
                                     final sentence =
                                         player.sentences[sentenceIndex];
@@ -842,8 +849,9 @@ class _ReviewDifficultPracticeScreenState
                                     playerState.currentSentenceIndex >=
                                     playerState.totalSentences - 1,
                                 centerIcon: _buildFooterCenterIcon(playerState),
-                                onPrevious: _handlePrevious,
-                                onNext: _handleNext,
+                                onPrevious: () =>
+                                    _handlePrevious(source: 'footer'),
+                                onNext: () => _handleNext(source: 'footer'),
                                 onCenter: _handleCenter,
                                 isManualMode: playerState.isManualMode,
                                 playCountText: _buildPlayCountText(
@@ -997,23 +1005,46 @@ class _ReviewDifficultPracticeScreenState
     );
   }
 
-  void _handlePrevious() {
+  void _handlePrevious({required String source}) {
     final playerState = ref.read(reviewDifficultPracticeProvider);
     final target = playerState.currentSentenceIndex - 1;
-    if (target < 0) return;
+    AppLogger.log(
+      'RDP-Navigation',
+      'event=previous-request source=$source '
+          'mode=${playerState.isAnnotationMode ? 'annotation' : 'blind'} '
+          'fromIndex=${playerState.currentSentenceIndex} targetIndex=$target '
+          'totalSentences=${playerState.totalSentences}',
+    );
+    if (target < 0) {
+      AppLogger.log(
+        'RDP-Navigation',
+        'event=previous-request-ignored source=$source '
+            'reason=first-sentence currentIndex=${playerState.currentSentenceIndex}',
+      );
+      return;
+    }
     unawaited(
       _sentencePager.animateAndCommit(
         target,
-        commit: () => _navigateToSentence(target),
+        source: '$source-previous',
+        commit: () => _navigateToSentence(target, source: '$source-previous'),
       ),
     );
   }
 
-  void _handleNext() {
+  void _handleNext({required String source}) {
     final playerState = ref.read(reviewDifficultPracticeProvider);
     final player = ref.read(reviewDifficultPracticeProvider.notifier);
     final isLast =
         playerState.currentSentenceIndex >= playerState.totalSentences - 1;
+    final target = playerState.currentSentenceIndex + 1;
+    AppLogger.log(
+      'RDP-Navigation',
+      'event=next-request source=$source '
+          'mode=${playerState.isAnnotationMode ? 'annotation' : 'blind'} '
+          'fromIndex=${playerState.currentSentenceIndex} targetIndex=$target '
+          'totalSentences=${playerState.totalSentences} action=${isLast ? 'complete' : 'navigate'}',
+    );
     if (isLast) {
       unawaited(_cancelRecordingAndPlayback());
       ref.read(speechRecordingControllerProvider.notifier).clearRecording();
@@ -1021,17 +1052,24 @@ class _ReviewDifficultPracticeScreenState
       unawaited(_handleCompleted());
       return;
     }
-    final target = playerState.currentSentenceIndex + 1;
     unawaited(
       _sentencePager.animateAndCommit(
         target,
-        commit: () => _navigateToSentence(target),
+        source: '$source-next',
+        commit: () => _navigateToSentence(target, source: '$source-next'),
       ),
     );
   }
 
   /// 切换句子前结束录音并清空录音结果，再提交新的句子索引。
-  Future<void> _navigateToSentence(int index) {
+  Future<void> _navigateToSentence(int index, {required String source}) {
+    final fromIndex = ref
+        .read(reviewDifficultPracticeProvider)
+        .currentSentenceIndex;
+    AppLogger.log(
+      'RDP-Navigation',
+      'event=screen-commit source=$source fromIndex=$fromIndex targetIndex=$index',
+    );
     unawaited(_cancelRecordingAndPlayback());
     ref.read(speechRecordingControllerProvider.notifier).clearRecording();
     return ref

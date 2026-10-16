@@ -1040,6 +1040,31 @@ void main() {
       expect(nextOpacity.opacity, 0.6);
     });
 
+    testWidgets('跟读模式点击下一句只提交一次并前进一格', (tester) async {
+      final player = _RecordingReviewDifficultPractice(
+        createPlayerState(currentSentenceIndex: 2, isAnnotationMode: true),
+        createTestSentences(
+          count: 5,
+        ).map((sentence) => sentence.copyWith(isBookmarked: true)).toList(),
+      );
+      await tester.pumpWidget(
+        createTestWidget(
+          playerState: createPlayerState(
+            currentSentenceIndex: 2,
+            isAnnotationMode: true,
+          ),
+          playerFactory: (_, __) => player,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.skip_next_rounded));
+      await tester.pumpAndSettle();
+
+      expect(player.goToSentenceCalls, 1);
+      expect(player.state.currentSentenceIndex, 3);
+    });
+
     testWidgets('跟读模式播放按钮可用（非禁用）', (tester) async {
       await tester.pumpWidget(
         createTestWidget(

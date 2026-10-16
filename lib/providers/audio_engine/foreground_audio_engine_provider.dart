@@ -111,11 +111,15 @@ class ForegroundAudioEngine extends _$ForegroundAudioEngine {
   ///
   /// 播放入口不应依赖调用方预加载：正面自动播放、意群试听等都可安全直接调用。
   /// 同一材料的并发加载会合并；加载完成后新建 session，旧播放自然失效。
+  /// [isRequestActive] 可在异步加载和调速后阻止已取消的旧请求起播；创建 session 后，
+  /// [onSessionStarted] 会同步收到该 sessionId，供调用方只取消自己启动的播放。
   Future<void> playRangeForAudio(
     String audioItemId,
     Duration start,
     Duration end, {
     required double speed,
+    bool Function()? isRequestActive,
+    void Function(int sessionId)? onSessionStarted,
   }) async {
     if (state.currentAudioId != audioItemId) {
       await _ensureAudioLoaded(audioItemId, speed);
@@ -123,8 +127,25 @@ class ForegroundAudioEngine extends _$ForegroundAudioEngine {
     if (state.currentAudioId != audioItemId) {
       throw StateError('audio_not_loaded:$audioItemId');
     }
+    if (isRequestActive != null && !isRequestActive()) {
+      AppLogger.log(
+        'ForegroundAudioEngine',
+        'event=range-play-skipped reason=request-cancelled-before-speed '
+            'audioId=$audioItemId',
+      );
+      return;
+    }
     await setSpeed(speed);
+    if (isRequestActive != null && !isRequestActive()) {
+      AppLogger.log(
+        'ForegroundAudioEngine',
+        'event=range-play-skipped reason=request-cancelled-before-session '
+            'audioId=$audioItemId',
+      );
+      return;
+    }
     final sessionId = newSession();
+    onSessionStarted?.call(sessionId);
     await playRangeOnce(start, end, sessionId);
   }
 
@@ -199,7 +220,13 @@ class ForegroundAudioEngine extends _$ForegroundAudioEngine {
   Future<void> play() async => await _player.play();
 
   Future<void> pause() async {
+    final oldId = state.sessionId;
     state = state.copyWith(sessionId: state.sessionId + 1);
+    AppLogger.log(
+      'ForegroundAudioEngine',
+      'event=pause-session-invalidated previousSessionId=$oldId '
+          'currentSessionId=${state.sessionId}',
+    );
     await _player.pause();
   }
 

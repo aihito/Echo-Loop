@@ -891,8 +891,13 @@ class IntensiveListenPlayer extends _$IntensiveListenPlayer {
     }
   }
 
-  Future<bool> _playSentenceForBlind(Sentence sentence, int _) async {
-    if (sentence.duration <= Duration.zero) return false;
+  Future<SentencePlaybackResult> _playSentenceForBlind(
+    Sentence sentence,
+    int _,
+  ) async {
+    if (sentence.duration <= Duration.zero) {
+      return SentencePlaybackResult.failed;
+    }
     _persistCurrentSentenceIndexAsync();
     final engine = _playback;
     final sessionId = engine.newSession();
@@ -900,11 +905,8 @@ class IntensiveListenPlayer extends _$IntensiveListenPlayer {
     final result = await engine.playSentence(sentence, sessionId);
     if (result == SentencePlaybackResult.completed) {
       _recordCompletedSentencePlayback(sentence);
-      return true;
     }
-    // 取消通常由切句或暂停触发，保留旧流程的当前句状态；流程 token
-    // 会在这些操作中失效，迟到回调不会推进新状态。只有明确失败才跳过句子。
-    return result == SentencePlaybackResult.cancelled;
+    return result;
   }
 
   Future<void> _goToSentence(int sentenceIndex) async {

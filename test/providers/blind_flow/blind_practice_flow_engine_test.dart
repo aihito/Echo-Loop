@@ -3,12 +3,13 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:echo_loop/models/sentence.dart';
+import 'package:echo_loop/models/sentence_playback_result.dart';
 import 'package:echo_loop/providers/blind_flow/blind_practice_flow_engine.dart';
 import 'package:echo_loop/providers/blind_flow/blind_practice_flow_phase.dart';
 
 void main() {
   test('旧播放取消后不跳过用户切换到的下一句', () async {
-    final firstResult = Completer<bool>();
+    final firstResult = Completer<SentencePlaybackResult>();
     final started = Completer<void>();
     final playedIndices = <int>[];
     final engine = BlindPracticeFlowEngine(
@@ -21,7 +22,7 @@ void main() {
             started.complete();
             return firstResult.future;
           }
-          return true;
+          return SentencePlaybackResult.completed;
         },
       ),
     );
@@ -30,7 +31,7 @@ void main() {
     final initialPlay = engine.startPlaying();
     await started.future;
     await engine.nextSentence();
-    firstResult.complete(false);
+    firstResult.complete(SentencePlaybackResult.cancelled);
     await initialPlay;
 
     expect(engine.state.sentenceIndex, 1);
@@ -39,7 +40,7 @@ void main() {
   });
 
   test('旧播放取消后不跳过用户切换到的上一句', () async {
-    final firstResult = Completer<bool>();
+    final firstResult = Completer<SentencePlaybackResult>();
     final started = Completer<void>();
     final playedIndices = <int>[];
     final engine = BlindPracticeFlowEngine(
@@ -52,7 +53,7 @@ void main() {
             started.complete();
             return firstResult.future;
           }
-          return true;
+          return SentencePlaybackResult.completed;
         },
       ),
     );
@@ -65,7 +66,7 @@ void main() {
     final initialPlay = engine.startPlaying();
     await started.future;
     await engine.previousSentence();
-    firstResult.complete(false);
+    firstResult.complete(SentencePlaybackResult.cancelled);
     await initialPlay;
 
     expect(engine.state.sentenceIndex, 0);
@@ -78,7 +79,9 @@ void main() {
       onStateChanged: (_) {},
       callbacks: BlindPracticeFlowCallbacks(
         pauseAudio: () {},
-        playSentence: (sentence, _) async => sentence.index != 0,
+        playSentence: (sentence, _) async => sentence.index == 0
+            ? SentencePlaybackResult.failed
+            : SentencePlaybackResult.completed,
       ),
     );
     engine.prepare(sentences: _sentences(), config: _manualConfig());
@@ -89,8 +92,24 @@ void main() {
     expect(engine.state.phase, isA<BlindWaitingForUser>());
   });
 
+  test('当前句播放被取消时停留在该句等待用户，不自动跳过', () async {
+    final engine = BlindPracticeFlowEngine(
+      onStateChanged: (_) {},
+      callbacks: BlindPracticeFlowCallbacks(
+        pauseAudio: () {},
+        playSentence: (_, _) async => SentencePlaybackResult.cancelled,
+      ),
+    );
+    engine.prepare(sentences: _sentences(), config: _manualConfig());
+
+    await engine.startPlaying();
+
+    expect(engine.state.sentenceIndex, 0);
+    expect(engine.state.phase, isA<BlindWaitingForUser>());
+  });
+
   test('最后一句播放中暂停后，取消结果不会完成流程', () async {
-    final playbackResult = Completer<bool>();
+    final playbackResult = Completer<SentencePlaybackResult>();
     final started = Completer<void>();
     final engine = BlindPracticeFlowEngine(
       onStateChanged: (_) {},
@@ -107,7 +126,7 @@ void main() {
     final playing = engine.startPlaying();
     await started.future;
     engine.enterWaitingForUser();
-    playbackResult.complete(false);
+    playbackResult.complete(SentencePlaybackResult.cancelled);
     await playing;
 
     expect(engine.state.sentenceIndex, 0);

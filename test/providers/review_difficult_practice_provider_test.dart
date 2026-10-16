@@ -112,6 +112,7 @@ class _PassiveLearningSession extends TestLearningSession {
 class _RecordingPlaybackDriver implements SentencePlaybackDriver {
   int _sessionId = 0;
   int pauseCalls = 0;
+  SentencePlaybackResult playResult = SentencePlaybackResult.completed;
   final List<double> speeds = [];
   final List<Sentence> playedSentences = [];
 
@@ -144,7 +145,7 @@ class _RecordingPlaybackDriver implements SentencePlaybackDriver {
   ) async {
     if (isActiveSession(sessionId)) playedSentences.add(sentence);
     return isActiveSession(sessionId)
-        ? SentencePlaybackResult.completed
+        ? playResult
         : SentencePlaybackResult.cancelled;
   }
 
@@ -173,6 +174,18 @@ class _RecordingPlaybackDriver implements SentencePlaybackDriver {
 
   @override
   void unbindLockScreen() {}
+}
+
+class _GatedInvalidationPlaybackDriver extends _RecordingPlaybackDriver {
+  final invalidationStarted = Completer<void>();
+  final finishInvalidation = Completer<void>();
+
+  @override
+  Future<void> invalidateSession() async {
+    await super.invalidateSession();
+    if (!invalidationStarted.isCompleted) invalidationStarted.complete();
+    await finishInvalidation.future;
+  }
 }
 
 class _ControlledPlaybackDriver implements SentencePlaybackDriver {
@@ -1057,6 +1070,59 @@ void main() {
       expect(
         container.read(reviewDifficultPracticeProvider).currentSentenceIndex,
         2,
+      );
+    });
+
+    test('当前音频播放被取消时停留在目标句，不自动跳过', () async {
+      final playback = _RecordingPlaybackDriver()
+        ..playResult = SentencePlaybackResult.cancelled;
+      final container = buildContainer();
+      addTearDown(container.dispose);
+      _listenToReviewDifficultPractice(container);
+      final notifier = container.read(reviewDifficultPracticeProvider.notifier);
+      await notifier.initialize(
+        buildSentences(2),
+        settings: const DifficultPracticeSettings(
+          controlMode: ShadowingControlMode.manual,
+        ),
+        playbackDriver: playback,
+      );
+
+      await notifier.startPlaying();
+
+      final state = container.read(reviewDifficultPracticeProvider);
+      expect(state.currentSentenceIndex, 0);
+      expect(state.blindFlowState?.phase, isA<BlindWaitingForUser>());
+      expect(playback.playedSentences.map((sentence) => sentence.index), [0]);
+    });
+
+    test('跳转等待旧音频失效完成后才播放目标句', () async {
+      final playback = _GatedInvalidationPlaybackDriver();
+      final container = buildContainer();
+      addTearDown(container.dispose);
+      _listenToReviewDifficultPractice(container);
+      final notifier = container.read(reviewDifficultPracticeProvider.notifier);
+      await notifier.initialize(
+        buildSentences(2),
+        settings: const DifficultPracticeSettings(
+          controlMode: ShadowingControlMode.manual,
+        ),
+        playbackDriver: playback,
+      );
+
+      final navigation = notifier.goToSentence(1);
+      await playback.invalidationStarted.future;
+      try {
+        expect(playback.playedSentences, isEmpty);
+      } finally {
+        playback.finishInvalidation.complete();
+      }
+      await navigation;
+
+      expect(playback.playedSentences.map((sentence) => sentence.index), [1]);
+      expect(
+        container.read(reviewDifficultPracticeProvider).currentSentenceIndex,
+        1,
       );
     });
 

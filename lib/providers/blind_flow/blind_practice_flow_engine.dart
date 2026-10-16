@@ -6,6 +6,7 @@ library;
 import 'dart:async';
 
 import '../../models/sentence.dart';
+import '../../models/sentence_playback_result.dart';
 import '../../services/app_logger.dart';
 import '../learning_session/countdown_controller.dart';
 import 'blind_practice_flow_phase.dart';
@@ -46,8 +47,12 @@ class BlindPracticeFlowCallbacks {
   /// 暂停音频播放
   final void Function() pauseAudio;
 
-  /// 播放句子音频，返回 false 表示当前句不可播放，应跳过
-  final Future<bool> Function(Sentence sentence, int flowToken) playSentence;
+  /// 播放句子音频；只有明确失败才会跳过当前句。
+  final Future<SentencePlaybackResult> Function(
+    Sentence sentence,
+    int flowToken,
+  )
+  playSentence;
 
   const BlindPracticeFlowCallbacks({
     required this.pauseAudio,
@@ -261,7 +266,7 @@ class BlindPracticeFlowEngine {
         await _config.onBeforeSentenceStart?.call(_state.sentenceIndex) ?? true;
     if (_disposed) return;
     if (!canStart) {
-      await _skipCurrentSentence();
+      await _skipCurrentSentence(reason: 'before-sentence-start-rejected');
       return;
     }
 
@@ -269,13 +274,36 @@ class BlindPracticeFlowEngine {
     final token = _state.flowToken;
     AppLogger.log(
       logTag,
-      'play sentence ${_state.sentenceIndex + 1}/${_state.totalSentences} '
-      'repeat ${_state.repeatIndex + 1}/${_state.totalRepeats}',
+      'event=play-start sentenceIndex=${_state.sentenceIndex} '
+      'sentence=${_state.sentenceIndex + 1}/${_state.totalSentences} '
+      'repeat=${_state.repeatIndex + 1}/${_state.totalRepeats} '
+      'flowToken=$token',
     );
 
-    final played = await callbacks.playSentence(sentence, token);
+    final result = await callbacks.playSentence(sentence, token);
     if (_disposed) return;
-    if (!played) {
+    final currentFlowToken = _state.flowToken;
+    AppLogger.log(
+      logTag,
+      'event=play-result sentenceIndex=${sentence.index} '
+      'flowToken=$token currentFlowToken=$currentFlowToken '
+      'currentIndex=${_state.sentenceIndex} '
+      'phase=${_state.phase.runtimeType} result=$result',
+    );
+    if (token != currentFlowToken) {
+      AppLogger.log(
+        logTag,
+        'event=play-result-ignored reason=stale-flow-token '
+        'flowToken=$token currentFlowToken=$currentFlowToken '
+        'result=$result',
+      );
+      return;
+    }
+    if (result == SentencePlaybackResult.cancelled) {
+      _handlePromptCancelled(token);
+      return;
+    }
+    if (result == SentencePlaybackResult.failed) {
       await _handlePromptNotPlayed(token);
       return;
     }
@@ -285,11 +313,29 @@ class BlindPracticeFlowEngine {
 
   /// 区分当前句真实不可播放和旧播放请求被取消两种结果。
   ///
-  /// 切句会递增 [BlindPracticeFlowState.flowToken] 并取消旧播放器 session；
-  /// 旧请求随后返回 `false` 时只能静默丢弃，不能跳过已切换后的当前句。
+  /// 当前请求只有明确失败才跳过；旧请求通过 flow token 校验后静默丢弃。
   Future<void> _handlePromptNotPlayed(int token) async {
     if (token != _state.flowToken) return;
-    await _skipCurrentSentence();
+    await _skipCurrentSentence(reason: 'playback-failed');
+  }
+
+  /// 当前流程的播放被取消时保留句子，等待用户重新播放或切换。
+  void _handlePromptCancelled(int token) {
+    if (token != _state.flowToken || _state.phase is! BlindPlayingPrompt) {
+      return;
+    }
+    _waitAfterCurrentPrompt = false;
+    _updateState(
+      _state.copyWith(
+        phase: const BlindWaitingForUser(BlindWaitingReason.userInteraction),
+        flowToken: _state.flowToken + 1,
+      ),
+    );
+    AppLogger.log(
+      logTag,
+      'event=play-cancelled action=wait sentenceIndex=${_state.sentenceIndex} '
+      'flowToken=$token nextFlowToken=${_state.flowToken}',
+    );
   }
 
   void _onPromptFinished(int token) {
@@ -300,7 +346,11 @@ class BlindPracticeFlowEngine {
     final sentence = currentSentence;
     if (sentence == null) return;
     _config.onSentencePlayed?.call(sentence);
-    AppLogger.log(logTag, 'prompt finished');
+    AppLogger.log(
+      logTag,
+      'event=prompt-finished sentenceIndex=${_state.sentenceIndex} '
+      'flowToken=$token',
+    );
 
     if (_waitAfterCurrentPrompt) {
       _waitAfterCurrentPrompt = false;
@@ -379,16 +429,30 @@ class BlindPracticeFlowEngine {
   Future<void> _advanceToNextSentence() async {
     if (_disposed) return;
     if (_state.isLastSentence) {
-      AppLogger.log(logTag, 'session completed');
+      AppLogger.log(
+        logTag,
+        'event=session-completed sentenceIndex=${_state.sentenceIndex} '
+        'flowToken=${_state.flowToken}',
+      );
       _updateState(_state.copyWith(phase: const BlindSessionCompleted()));
       return;
     }
+    AppLogger.log(
+      logTag,
+      'event=auto-advance reason=interval-completed '
+      'fromIndex=${_state.sentenceIndex} toIndex=${_state.sentenceIndex + 1} '
+      'flowToken=${_state.flowToken}',
+    );
     await _jumpToSentence(_state.sentenceIndex + 1);
   }
 
-  Future<void> _skipCurrentSentence() async {
+  Future<void> _skipCurrentSentence({required String reason}) async {
     if (_disposed) return;
-    AppLogger.log(logTag, 'skip current sentence');
+    AppLogger.log(
+      logTag,
+      'event=skip-current reason=$reason '
+      'sentenceIndex=${_state.sentenceIndex} flowToken=${_state.flowToken}',
+    );
     await _advanceToNextSentence();
   }
 
