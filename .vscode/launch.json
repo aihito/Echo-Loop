@@ -1,0 +1,38 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Echo Loop (dev)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "flutterMode": "debug",
+      "toolArgs": [
+        "--flavor=dev",
+        "--dart-define-from-file=.dev.env"
+      ]
+    },
+    {
+      "name": "Echo Loop (dev · profile)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "flutterMode": "profile",
+      "toolArgs": [
+        "--flavor=dev",
+        "--dart-define-from-file=.dev.env"
+      ]
+    },
+    {
+      "name": "Echo Loop (Windows · UI only)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "deviceId": "windows",
+      "flutterMode": "debug",
+      "toolArgs": [
+        "--dart-define-from-file=.dev.env"
+      ]
+    }
+  ]
+}

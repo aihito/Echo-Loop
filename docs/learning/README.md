@@ -1,7 +1,7 @@
 # Echo Loop 学习资料索引
 
 > 面向想读懂本仓库的开发者。按阶段学，先跑通再深入。  
-> 最后更新：2026-10-14
+> 最后更新：2026-10-16
 
 本目录只做**学习地图**：不重复粘贴长文，而是把仓库里已有文档、代码入口按阅读顺序串起来。
 
@@ -107,6 +107,10 @@ Model = 业务数据；State = 界面运行态
 - **壳内路由**：写在 `StatefulShellRoute` 的 branch 里 → 有底栏/侧栏。
 - **壳外路由**：与 Shell 平级，常带 `parentNavigatorKey: rootNavigatorKey` → 全屏盖住壳。
 - **嵌套子路由**：URL 带完整栈，避免 Android 重建后返回多退一层（见 CLAUDE.md §7.17）。
+
+**匹配规则 + 全路径表 + AppRoutes 速查**（为何 `/collections/{id}` 能命中 `:collectionId`、redirect、extra、pushNested）：
+
+**[app-router.md](./app-router.md)**
 
 回归参考：`test/router/app_router_test.dart`。
 

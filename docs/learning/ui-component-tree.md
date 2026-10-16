@@ -2,7 +2,8 @@
 
 > 按**运行时挂载 / 路由挂载**穷尽梳理：App 根、GoRouter 全路径、四 Tab 页内组装、壳外页、`lib/widgets` 全文件域、叠层与 Modal。  
 > 页面业务职责摘要见 [screens.md](./screens.md)；框架控件用法见 [flutter-widgets.md](./flutter-widgets.md)。  
-> 源码为准（`lib/router/app_router.dart` 等）。最后更新：2026-10-14 · 入口：[学习地图](./README.md)
+> **匹配规则 / AppRoutes / redirect 速查**见 [app-router.md](./app-router.md)。  
+> 源码为准（`lib/router/app_router.dart` 等）。最后更新：2026-10-16 · 入口：[学习地图](./README.md)
 
 **章节导航**
 
