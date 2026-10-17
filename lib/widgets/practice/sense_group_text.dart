@@ -1,7 +1,8 @@
 /// 意群标注文本组件
 ///
 /// 将句子按意群渲染为内联 badge 样式，保持自然文本排版。
-/// 所有意群使用统一背景色，可点击播放对应音频片段。
+/// 未收藏意群使用透明背景，以边框区分播放状态；已收藏意群保留橙色背景。
+/// 所有意群均可点击播放对应音频片段。
 /// 支持四种视觉状态：空闲 / 播放中 / 已播放 / 已收藏。
 ///
 /// 已收藏的单词/词组在 badge 内文本上渲染橙色点状下划线（与
@@ -27,20 +28,6 @@ const _matchedColor = Color(0xFF2E9B51);
 /// 提取英文单词（与 [SpeechTranscriptMatcher] 规则一致，保留撇号）
 final _englishWordPattern = RegExp(r"[A-Za-z]+(?:'[A-Za-z]+)?");
 final _playbackWordPattern = RegExp(r'\S+');
-
-/// 意群 badge 空闲态背景色（亮色主题）
-///
-/// 用中性灰，搭配跟读完成后的绿色匹配字，也避免蓝底误导用户。
-const _groupColorLight = Color(0xFFEDEFF2); // 中性浅灰
-
-/// 意群 badge 空闲态背景色（暗色主题）
-const _groupColorDark = Color(0xFF26262A); // 中性深灰
-
-/// 播放中意群背景色（暗色主题）
-///
-/// 比空闲态更亮一档的实色蓝，凸显"正在播放"；替代 M3 primaryContainer
-/// （低饱和灰蓝在纯黑上发雾），与空闲态保持同色系。
-const _playingColorDark = Color(0xFF1E4A70); // 亮蓝（播放中）
 
 /// 已收藏意群背景色（亮色主题）
 final _savedColorLight = Colors.orange.shade50;
@@ -339,16 +326,14 @@ class _SenseGroupTextState extends ConsumerState<SenseGroupText> {
       normalizeSenseGroupPhrase(chunk),
     );
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final borderAlpha = isDark ? 0.6 : 0.3;
 
-    // 背景色优先级：播放中 > 已收藏 > 默认
-    final Color bgColor;
-    if (isPlaying) {
-      bgColor = isDark ? _playingColorDark : colorScheme.primaryContainer;
-    } else if (isSaved) {
-      bgColor = isDark ? _savedColorDark : _savedColorLight;
-    } else {
-      bgColor = isDark ? _groupColorDark : _groupColorLight;
-    }
+    // 普通态和播放态保持透明底；仅非播放中的已收藏意群保留橙色提示。
+    final Color? bgColor = isSaved && !isPlaying
+        ? isDark
+              ? _savedColorDark
+              : _savedColorLight
+        : null;
 
     // 边框优先级：播放中 > 已收藏 > 已播放 > 默认
     final Color borderColor;
@@ -357,9 +342,9 @@ class _SenseGroupTextState extends ConsumerState<SenseGroupText> {
     } else if (isSaved) {
       borderColor = _savedBorderColor;
     } else if (isPlayed) {
-      borderColor = colorScheme.primary.withValues(alpha: 0.3);
+      borderColor = colorScheme.primary.withValues(alpha: borderAlpha);
     } else {
-      borderColor = colorScheme.outline.withValues(alpha: 0.3);
+      borderColor = colorScheme.outline.withValues(alpha: borderAlpha);
     }
     final border = Border.all(color: borderColor, width: 1.5);
 

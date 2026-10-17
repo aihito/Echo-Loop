@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:echo_loop/models/speech_practice_models.dart';
 import 'package:echo_loop/providers/saved_word_provider.dart';
+import 'package:echo_loop/theme/app_theme.dart';
 import 'package:echo_loop/utils/saved_text_index.dart';
 import 'package:echo_loop/widgets/practice/sense_group_text.dart';
 
@@ -33,6 +34,77 @@ void main() {
   /// 单词段（命中目标词）
   SpeechTranscriptSegment word(String text, {required bool matched}) =>
       SpeechTranscriptSegment(text: text, isMatched: matched);
+
+  BoxDecoration badgeDecorationFor(WidgetTester tester, String text) {
+    final badge = tester.widget<Container>(
+      find
+          .ancestor(of: find.text(text), matching: find.byType(Container))
+          .first,
+    );
+    return switch (badge.decoration) {
+      BoxDecoration decoration => decoration,
+      _ => throw StateError('意群 badge 应使用 BoxDecoration'),
+    };
+  }
+
+  Color badgeBorderColor(BoxDecoration decoration) {
+    return switch (decoration.border) {
+      Border border => border.top.color,
+      _ => throw StateError('意群 badge 应使用 Border'),
+    };
+  }
+
+  testWidgets('普通态与播放态意群无背景填充，播放态仍由边框区分', (tester) async {
+    await tester.pumpWidget(
+      createTestApp(
+        SenseGroupText(
+          chunks: const ['idle group', 'playing group'],
+          timings: const [],
+          onTapGroup: (_) {},
+          playingGroupIndex: 1,
+        ),
+      ),
+    );
+
+    final idleDecoration = badgeDecorationFor(tester, 'idle group');
+    final playingDecoration = badgeDecorationFor(tester, 'playing group');
+
+    expect(idleDecoration.color, isNull);
+    expect(playingDecoration.color, isNull);
+    expect(idleDecoration.border, isNot(equals(playingDecoration.border)));
+  });
+
+  testWidgets('暗色主题提高普通态与已播放态边框的可见度', (tester) async {
+    await tester.pumpWidget(
+      createTestApp(
+        Theme(
+          data: AppTheme.dark(),
+          child: Scaffold(
+            backgroundColor: Colors.black,
+            body: SenseGroupText(
+              chunks: const ['idle group', 'played group'],
+              timings: const [],
+              onTapGroup: (_) {},
+              playedGroupIndices: const {1},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final idleDecoration = badgeDecorationFor(tester, 'idle group');
+    final playedDecoration = badgeDecorationFor(tester, 'played group');
+    final darkColorScheme = AppTheme.dark().colorScheme;
+
+    expect(
+      badgeBorderColor(idleDecoration),
+      darkColorScheme.outline.withValues(alpha: 0.6),
+    );
+    expect(
+      badgeBorderColor(playedDecoration),
+      darkColorScheme.primary.withValues(alpha: 0.6),
+    );
+  });
 
   group('SenseGroupText — 意群模式单词高亮', () {
     testWidgets('匹配单词染绿，未匹配单词不染绿', (tester) async {
