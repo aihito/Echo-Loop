@@ -57,7 +57,6 @@
       "rulerLane": "center"
     }
   },
-  "dart.flutterSdkPath": ".fvm/versions/3.41.5",
   "editor.showFoldingControls": "mouseover",
   "editor.guides.indentation": false,
   "editor.guides.highlightActiveIndentation": false,

@@ -13,6 +13,19 @@
       ]
     },
     {
+      "name": "Echo Loop (dev · Android emulator)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "deviceId": "emulator-5554",
+      "flutterMode": "debug",
+      "preLaunchTask": "Start Android Emulator (Pixel_10_Pro)",
+      "toolArgs": [
+        "--flavor=dev",
+        "--dart-define-from-file=.dev.env"
+      ]
+    },
+    {
       "name": "Echo Loop (dev · profile)",
       "request": "launch",
       "type": "dart",
