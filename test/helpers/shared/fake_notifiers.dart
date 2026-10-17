@@ -500,6 +500,9 @@ class FakeTagList extends TagList {
 /// 测试用 ListeningPractice — 不访问音频引擎
 class FakeListeningPractice extends ListeningPractice {
   final ListeningPracticeState initialState;
+  bool listenersSuspended = false;
+  int pauseCalls = 0;
+  int syncBookmarksCalls = 0;
 
   FakeListeningPractice([this.initialState = const ListeningPracticeState()]);
 
@@ -518,7 +521,10 @@ class FakeListeningPractice extends ListeningPractice {
   Future<void> play() async {}
 
   @override
-  Future<void> pause() async {}
+  Future<void> pause() async {
+    pauseCalls += 1;
+    state = state.copyWith(isPlaying: false);
+  }
 
   @override
   Future<void> stop() async {}
@@ -579,13 +585,19 @@ class FakeListeningPractice extends ListeningPractice {
   Future<void> saveCurrentPlaybackState({bool silent = false}) async {}
 
   @override
-  void suspendListeners() {}
+  void suspendListeners() {
+    listenersSuspended = true;
+  }
 
   @override
-  void resumeListeners() {}
+  void resumeListeners() {
+    listenersSuspended = false;
+  }
 
   @override
-  Future<void> syncBookmarks() async {}
+  Future<void> syncBookmarks() async {
+    syncBookmarksCalls += 1;
+  }
 
   /// 设置测试用句子列表
   void setTestSentences(List<Sentence> sentences) {
@@ -997,7 +1009,7 @@ class FakeLearningSession extends LearningSession {
       learningMode: LearningMode.blindListen,
       audioItemId: mediaItem.id,
       isFreePlay: isFreePlay,
-      playbackChain: LearningPlaybackChain.media,
+      playbackChain: LearningPlaybackChain.mediaEngine,
     );
     return MediaLoadResult.ready;
   }
@@ -1006,22 +1018,7 @@ class FakeLearningSession extends LearningSession {
   Future<void> cancelMediaBlindListenEntry() async {}
 
   @override
-  Future<void> enterIntensiveListenMode(
-    String audioItemId,
-    List<Sentence> sentences, {
-    bool isFreePlay = false,
-    IntensiveListenSettings settings = const IntensiveListenSettings(),
-    String? settingsSlot,
-  }) async {
-    state = state.copyWith(
-      learningMode: LearningMode.intensiveListen,
-      audioItemId: audioItemId,
-      isFreePlay: isFreePlay,
-    );
-  }
-
-  @override
-  Future<MediaLoadResult> enterMediaIntensiveListenMode(
+  Future<MediaLoadResult> enterIntensiveListenMode(
     AudioItem mediaItem,
     List<Sentence> sentences, {
     bool isFreePlay = false,
@@ -1032,10 +1029,13 @@ class FakeLearningSession extends LearningSession {
       learningMode: LearningMode.intensiveListen,
       audioItemId: mediaItem.id,
       isFreePlay: isFreePlay,
-      playbackChain: LearningPlaybackChain.media,
+      playbackChain: LearningPlaybackChain.mediaEngine,
     );
     return MediaLoadResult.ready;
   }
+
+  @override
+  Future<void> cancelIntensiveListenEntry() async {}
 
   @override
   Future<void> enterListenAndRepeatMode(
@@ -1078,7 +1078,7 @@ class FakeLearningSession extends LearningSession {
       learningMode: LearningMode.reviewDifficultPractice,
       audioItemId: mediaItem.id,
       isFreePlay: isFreePlay,
-      playbackChain: LearningPlaybackChain.media,
+      playbackChain: LearningPlaybackChain.mediaEngine,
     );
     return MediaLoadResult.ready;
   }
@@ -1206,6 +1206,9 @@ class FakeBlindListenPlayer extends BlindListenPlayer {
 class FakeIntensiveListenPlayer extends IntensiveListenPlayer {
   final IntensiveListenState initialState;
   List<Sentence> testSentences;
+  IntensiveListenPlaybackDriver? playbackDriver;
+  @override
+  SenseGroupRangePlayback? senseGroupRangePlayback;
 
   FakeIntensiveListenPlayer([
     this.initialState = const IntensiveListenState(),
@@ -1236,14 +1239,16 @@ class FakeIntensiveListenPlayer extends IntensiveListenPlayer {
     String? settingsSlot,
     IntensiveListenPlaybackDriver? playbackDriver,
     SenseGroupRangePlayback? senseGroupRangePlayback,
-    bool usesMediaEngine = false,
+    bool hasVideo = false,
   }) async {
     testSentences = List.of(sentences);
+    this.playbackDriver = playbackDriver;
+    this.senseGroupRangePlayback = senseGroupRangePlayback;
     state = IntensiveListenState(
       currentSentenceIndex: startIndex,
       totalSentences: sentences.length,
       settings: settings,
-      usesMediaEngine: usesMediaEngine,
+      hasVideo: hasVideo,
     );
   }
 
@@ -1459,6 +1464,8 @@ class FakeIntensiveListenPlayer extends IntensiveListenPlayer {
   @override
   Future<void> disposePlayer() async {
     testSentences = [];
+    playbackDriver = null;
+    senseGroupRangePlayback = null;
     state = const IntensiveListenState();
   }
 

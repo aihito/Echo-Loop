@@ -69,8 +69,8 @@ enum LearningMode {
   reviewDifficultPractice,
 }
 
-/// 当前学习会话实际占用的播放链路。
-enum LearningPlaybackChain { audio, media }
+/// 当前学习会话使用的播放器引擎链路。
+enum LearningPlaybackChain { audioEngine, mediaEngine }
 
 /// 学习会话状态
 class LearningSessionState {
@@ -129,7 +129,7 @@ class LearningSessionState {
     this.shadowingTargetPlayCount = 3,
     this.catchUpStage,
     this.catchUpSubStage,
-    this.playbackChain = LearningPlaybackChain.audio,
+    this.playbackChain = LearningPlaybackChain.audioEngine,
   });
 
   /// 是否处于学习模式中
@@ -202,7 +202,7 @@ class LearningSession extends _$LearningSession {
   int _mediaBlindListenEntryGeneration = 0;
 
   /// 视频精听进入流程 generation；退出或重试会使旧异步结果失效。
-  int _mediaIntensiveEntryGeneration = 0;
+  int _intensiveListenEntryGeneration = 0;
 
   /// 视频复述进入流程 generation；取消、重试或退出会使旧异步结果失效。
   int _mediaRetellEntryGeneration = 0;
@@ -453,7 +453,7 @@ class LearningSession extends _$LearningSession {
       blindListenPassCount: progress.blindListenPassCount + 1,
       audioItemId: mediaItem.id,
       isFreePlay: isFreePlay,
-      playbackChain: LearningPlaybackChain.media,
+      playbackChain: LearningPlaybackChain.mediaEngine,
       clearSavedSettings: true,
     );
     await ref
@@ -474,7 +474,7 @@ class LearningSession extends _$LearningSession {
   Future<void> cancelMediaBlindListenEntry() async {
     _mediaBlindListenEntryGeneration += 1;
     if (state.learningMode == LearningMode.blindListen &&
-        state.playbackChain == LearningPlaybackChain.media) {
+        state.playbackChain == LearningPlaybackChain.mediaEngine) {
       await exitLearningMode();
     } else {
       await ref.read(mediaEngineProvider.notifier).releaseFromScreen();
@@ -492,79 +492,26 @@ class LearningSession extends _$LearningSession {
     await blindPlayer.restart();
   }
 
-  /// 进入逐句精听模式
+  /// 进入音频或视频逐句精听模式。
   ///
-  /// 1. 保存当前用户播放设置
-  /// 2. 暂停 LP 的 stream 监听
-  /// 3. 初始化 IntensiveListenPlayer，从数据库读取断点句子索引
-  Future<void> enterIntensiveListenMode(
-    String audioItemId,
-    List<Sentence> sentences, {
-    bool isFreePlay = false,
-    IntensiveListenSettings settings = const IntensiveListenSettings(),
-    String? settingsSlot,
-  }) async {
-    final practice = ref.read(listeningPracticeProvider.notifier);
-    final currentSettings = ref.read(listeningPracticeProvider).settings;
-    final progressNotifier = ref.read(
-      learningProgressNotifierProvider.notifier,
-    );
-
-    // 读取断点续学索引：各自读取独立字段 + 校验过期时间
-    final progress = await progressNotifier.getLatestOrEnsureProgress(
-      audioItemId,
-    );
-    int startIndex = 0;
-    if (isFreePlay && _isBreakpointValid(progress.freePlayBreakpointSavedAt)) {
-      startIndex = progress.freePlayIntensiveListenSentenceIndex ?? 0;
-    } else if (!isFreePlay &&
-        _isBreakpointValid(progress.newLearningBreakpointSavedAt)) {
-      startIndex = progress.intensiveListenSentenceIndex ?? 0;
-    }
-
-    state = state.copyWith(
-      learningMode: LearningMode.intensiveListen,
-      blindListenCompleted: false,
-      audioItemId: audioItemId,
-      savedSettings: currentSettings,
-      isFreePlay: isFreePlay,
-    );
-
-    // 暂停 LP 的 stream 监听
-    practice.suspendListeners();
-    await _ensureAudioLoaded(audioItemId);
-
-    _logEnterMode(
-      'enterIntensiveListenMode',
-      audioItemId,
-      sentenceCount: sentences.length,
-      firstSentenceText: sentences.isNotEmpty ? sentences.first.text : null,
-    );
-
-    // 初始化精听播放器([settings] 已由调用方从用户偏好 resolve 出,含默认+记忆)。
-    final intensivePlayer = ref.read(intensiveListenPlayerProvider.notifier);
-    await intensivePlayer.initialize(
-      sentences,
-      startIndex: startIndex,
-      settings: settings,
-      settingsSlot: settingsSlot,
-    );
-    _trackSessionStart();
-  }
-
-  /// 进入视频逐句精听模式。
-  ///
-  /// 字幕由调用方直接从数据库提供，媒体只加载到 MediaEngine；不会把视频送入
-  /// listeningPracticeProvider，也不会改写现有音频逐句精听的加载链路。
-  Future<MediaLoadResult> enterMediaIntensiveListenMode(
+  /// 两种材料共用 MediaEngine；页面管理加载反馈，代际与媒体 session 同时
+  /// 校验，避免取消或较早的加载结果影响后续精听会话。
+  Future<MediaLoadResult> enterIntensiveListenMode(
     AudioItem mediaItem,
     List<Sentence> sentences, {
     bool isFreePlay = false,
     IntensiveListenSettings settings = const IntensiveListenSettings(),
     String? settingsSlot,
   }) async {
-    final generation = ++_mediaIntensiveEntryGeneration;
-    bool isCurrentGeneration() => generation == _mediaIntensiveEntryGeneration;
+    final generation = ++_intensiveListenEntryGeneration;
+    bool isCurrentGeneration() => generation == _intensiveListenEntryGeneration;
+    final mediaType = mediaItem.isVideo ? 'video' : 'audio';
+    AppLogger.log(
+      'IntensiveListen',
+      'event=entry-start generation=$generation itemId=${mediaItem.id} '
+          'mediaType=$mediaType source=${isFreePlay ? 'free-practice' : 'planned'} '
+          'sentenceCount=${sentences.length} speed=${settings.playbackSpeed}',
+    );
 
     final progressNotifier = ref.read(
       learningProgressNotifierProvider.notifier,
@@ -572,12 +519,26 @@ class LearningSession extends _$LearningSession {
     final progress = await progressNotifier.getLatestOrEnsureProgress(
       mediaItem.id,
     );
-    if (!isCurrentGeneration()) return MediaLoadResult.cancelled;
+    if (!isCurrentGeneration()) {
+      AppLogger.log(
+        'IntensiveListen',
+        'event=entry-cancelled generation=$generation stage=progress '
+            'currentGeneration=$_intensiveListenEntryGeneration',
+      );
+      return MediaLoadResult.cancelled;
+    }
     final bookmarkedIndices = await BookmarkManager.loadBookmarks(
       mediaItem.id,
       dao: ref.read(bookmarkDaoProvider),
     );
-    if (!isCurrentGeneration()) return MediaLoadResult.cancelled;
+    if (!isCurrentGeneration()) {
+      AppLogger.log(
+        'IntensiveListen',
+        'event=entry-cancelled generation=$generation stage=bookmarks '
+            'currentGeneration=$_intensiveListenEntryGeneration',
+      );
+      return MediaLoadResult.cancelled;
+    }
     final sessionSentences = BookmarkManager.createSentenceBookmarkSnapshot(
       sentences,
       bookmarkedIndices,
@@ -590,35 +551,81 @@ class LearningSession extends _$LearningSession {
         _isBreakpointValid(progress.newLearningBreakpointSavedAt)) {
       startIndex = progress.intensiveListenSentenceIndex ?? 0;
     }
+    AppLogger.log(
+      'IntensiveListen',
+      'event=breakpoint-selected itemId=${mediaItem.id} source='
+          '${isFreePlay ? 'free-practice' : 'planned'} startIndex=$startIndex '
+          'bookmarkCount=${bookmarkedIndices.length}',
+    );
 
-    // 两条媒体会话不能同时占用系统控制位；这里只暂停旧音频，不加载或改写它。
-    await ref.read(audioEngineProvider.notifier).pause();
-    if (!isCurrentGeneration()) return MediaLoadResult.cancelled;
+    // 先暂停并移交 Free Player，避免媒体加载期间旧音频继续播放或更新锁屏状态。
+    final freePlayer = ref.read(listeningPracticeProvider.notifier);
+    await freePlayer.pause();
+    if (!isCurrentGeneration()) {
+      AppLogger.log(
+        'IntensiveListen',
+        'event=entry-cancelled generation=$generation stage=pause-player '
+            'currentGeneration=$_intensiveListenEntryGeneration',
+      );
+      return MediaLoadResult.cancelled;
+    }
+    freePlayer.suspendListeners();
+    AppLogger.log(
+      'IntensiveListen',
+      'event=free-player-listeners-suspended generation=$generation '
+          'itemId=${mediaItem.id} listenersSuspended=true',
+    );
 
     final mediaEngine = ref.read(mediaEngineProvider.notifier);
+    final mediaSessionId = mediaEngine.newSession();
+    bool ownsMediaSession() => mediaEngine.isActiveSession(mediaSessionId);
+    final mediaLoadTimer = Stopwatch()..start();
+    AppLogger.log(
+      'IntensiveListen',
+      'event=media-load-start generation=$generation itemId=${mediaItem.id} '
+          'mediaType=$mediaType mediaSessionId=$mediaSessionId',
+    );
     final duration = await mediaEngine.loadMedia(
       mediaItem,
       settings.playbackSpeed,
     );
-    if (!isCurrentGeneration()) {
-      await mediaEngine.releaseFromScreen();
+    if (!isCurrentGeneration() || !ownsMediaSession()) {
+      final ownsSession = ownsMediaSession();
+      AppLogger.log(
+        'IntensiveListen',
+        'event=entry-cancelled generation=$generation stage=media-load '
+            'reason=${isCurrentGeneration() ? 'media-session-replaced' : 'superseded'} '
+            'mediaSessionId=$mediaSessionId ownsSession=$ownsSession '
+            'elapsedMs=${mediaLoadTimer.elapsedMilliseconds}',
+      );
+      if (ownsSession) await mediaEngine.releaseFromScreen();
       return MediaLoadResult.cancelled;
     }
     if (duration == null) {
+      final error = mediaEngine.state.errorMessage ?? 'duration-unavailable';
       AppLogger.log(
-        'Session',
-        '✗ enterMediaIntensiveListenMode load failed: ${mediaItem.id}',
+        'IntensiveListen',
+        'event=entry-failed generation=$generation stage=media-load '
+            'itemId=${mediaItem.id} mediaType=$mediaType '
+            'mediaSessionId=$mediaSessionId elapsedMs='
+            '${mediaLoadTimer.elapsedMilliseconds} error=$error',
       );
-      // loadMedia 会先创建 media_kit 链路；失败后立即释放，避免重试时残留
-      // 未激活的 native Player。该清理只针对独立视频链路。
       await mediaEngine.releaseFromScreen();
+      freePlayer.resumeListeners();
       return MediaLoadResult.failure;
     }
 
-    // 学习页视频字幕默认关闭；共享画面宿主在用户点 CC 后再按需读取 SRT。
+    // 学习页视频字幕默认关闭；视频画面宿主在用户点 CC 后再按需读取 SRT。
     await mediaEngine.setSubtitleTrackData(null);
-    if (!isCurrentGeneration()) {
-      await mediaEngine.releaseFromScreen();
+    if (!isCurrentGeneration() || !ownsMediaSession()) {
+      final ownsSession = ownsMediaSession();
+      AppLogger.log(
+        'IntensiveListen',
+        'event=entry-cancelled generation=$generation stage=subtitle-setup '
+            'reason=${isCurrentGeneration() ? 'media-session-replaced' : 'superseded'} '
+            'mediaSessionId=$mediaSessionId ownsSession=$ownsSession',
+      );
+      if (ownsSession) await mediaEngine.releaseFromScreen();
       return MediaLoadResult.cancelled;
     }
 
@@ -626,7 +633,7 @@ class LearningSession extends _$LearningSession {
       learningMode: LearningMode.intensiveListen,
       audioItemId: mediaItem.id,
       isFreePlay: isFreePlay,
-      playbackChain: LearningPlaybackChain.media,
+      playbackChain: LearningPlaybackChain.mediaEngine,
       clearSavedSettings: true,
     );
 
@@ -636,37 +643,65 @@ class LearningSession extends _$LearningSession {
       startIndex: startIndex,
       settings: settings,
       settingsSlot: settingsSlot,
-      playbackDriver: MediaIntensiveListenPlaybackDriver(mediaEngine),
+      playbackDriver: MediaSentencePlaybackDriver(mediaEngine),
       senseGroupRangePlayback: MediaSenseGroupRangePlayback(
         engine: mediaEngine,
         playbackSpeed: () =>
             ref.read(intensiveListenPlayerProvider).settings.playbackSpeed,
       ),
-      usesMediaEngine: true,
+      hasVideo: mediaItem.isVideo,
     );
     if (!isCurrentGeneration()) {
-      await exitLearningMode();
+      AppLogger.log(
+        'IntensiveListen',
+        'event=entry-cancelled generation=$generation stage=player-initialize '
+            'itemId=${mediaItem.id} currentGeneration=$_intensiveListenEntryGeneration '
+            'ownsMediaSession=${ownsMediaSession()}',
+      );
+      if (ownsMediaSession() &&
+          state.learningMode == LearningMode.intensiveListen &&
+          state.playbackChain == LearningPlaybackChain.mediaEngine &&
+          state.audioItemId == mediaItem.id) {
+        await exitLearningMode();
+      }
       return MediaLoadResult.cancelled;
     }
 
     _trackSessionStart();
     AppLogger.log(
+      'IntensiveListen',
+      'event=entry-ready generation=$generation itemId=${mediaItem.id} '
+          'mediaType=$mediaType source=${isFreePlay ? 'free-practice' : 'planned'} '
+          'mediaSessionId=$mediaSessionId requestedStartIndex=$startIndex '
+          'resolvedStartIndex=${intensivePlayer.currentIndex} '
+          'sentenceCount=${sentences.length} durationMs=${duration.inMilliseconds} '
+          'loadElapsedMs=${mediaLoadTimer.elapsedMilliseconds}',
+    );
+    AppLogger.log(
       'Session',
-      '🎬 enterMediaIntensiveListenMode: targetId=${mediaItem.id}, '
-          'sentences=${sentences.length}',
+      '🎧 enterIntensiveListenMode: targetId=${mediaItem.id}, '
+          'video=${mediaItem.isVideo} sentences=${sentences.length}',
     );
     return MediaLoadResult.ready;
   }
 
-  /// 取消当前视频精听进入流程。
+  /// 取消当前精听进入流程。
   ///
   /// 加载尚未完成时只使 generation 失效，由原协程在下一异步边界释放媒体；若
   /// 会话已完成写入，则复用正常退出路径立即释放播放器和学习状态。
-  Future<void> cancelMediaIntensiveListenEntry() async {
-    _mediaIntensiveEntryGeneration += 1;
+  Future<void> cancelIntensiveListenEntry() async {
+    _intensiveListenEntryGeneration += 1;
+    AppLogger.log(
+      'IntensiveListen',
+      'event=cancel-request generation=$_intensiveListenEntryGeneration '
+          'mode=${state.learningMode} chain=${state.playbackChain} '
+          'itemId=${state.audioItemId}',
+    );
     if (state.learningMode == LearningMode.intensiveListen &&
-        state.playbackChain == LearningPlaybackChain.media) {
+        state.playbackChain == LearningPlaybackChain.mediaEngine) {
       await exitLearningMode();
+    } else {
+      ref.read(listeningPracticeProvider.notifier).resumeListeners();
     }
   }
 
@@ -780,7 +815,7 @@ class LearningSession extends _$LearningSession {
       catchUpStage: catchUpStage,
       catchUpSubStage: catchUpSubStage,
       clearCatchUp: catchUpStage == null,
-      playbackChain: LearningPlaybackChain.audio,
+      playbackChain: LearningPlaybackChain.audioEngine,
     );
 
     // 暂停 LP 的 stream 监听
@@ -875,7 +910,7 @@ class LearningSession extends _$LearningSession {
       catchUpStage: catchUpStage,
       catchUpSubStage: catchUpSubStage,
       clearCatchUp: catchUpStage == null,
-      playbackChain: LearningPlaybackChain.media,
+      playbackChain: LearningPlaybackChain.mediaEngine,
       clearSavedSettings: true,
     );
 
@@ -915,7 +950,7 @@ class LearningSession extends _$LearningSession {
   Future<void> cancelMediaRetellEntry() async {
     _mediaRetellEntryGeneration += 1;
     if (state.learningMode == LearningMode.retell &&
-        state.playbackChain == LearningPlaybackChain.media) {
+        state.playbackChain == LearningPlaybackChain.mediaEngine) {
       await exitLearningMode();
     }
   }
@@ -1020,7 +1055,7 @@ class LearningSession extends _$LearningSession {
       audioItemId: audioItemId,
       savedSettings: currentSettings,
       isFreePlay: isFreePlay,
-      playbackChain: LearningPlaybackChain.audio,
+      playbackChain: LearningPlaybackChain.audioEngine,
     );
 
     // 暂停 LP 的 stream 监听
@@ -1135,7 +1170,7 @@ class LearningSession extends _$LearningSession {
       blindListenCompleted: false,
       audioItemId: mediaItem.id,
       isFreePlay: isFreePlay,
-      playbackChain: LearningPlaybackChain.media,
+      playbackChain: LearningPlaybackChain.mediaEngine,
       clearSavedSettings: true,
     );
 
@@ -1177,7 +1212,7 @@ class LearningSession extends _$LearningSession {
   Future<void> cancelMediaReviewDifficultPracticeEntry() async {
     _mediaReviewDifficultEntryGeneration += 1;
     if (state.learningMode == LearningMode.reviewDifficultPractice &&
-        state.playbackChain == LearningPlaybackChain.media) {
+        state.playbackChain == LearningPlaybackChain.mediaEngine) {
       await exitLearningMode();
     }
   }
@@ -1187,6 +1222,7 @@ class LearningSession extends _$LearningSession {
   /// 根据当前学习模式分支处理：停止播放、释放资源、恢复 LP 监听。
   Future<void> exitLearningMode() async {
     final mode = state.learningMode;
+    final itemId = state.audioItemId;
     final intensivePlayer = mode == LearningMode.intensiveListen
         ? ref.read(intensiveListenPlayerProvider.notifier)
         : null;
@@ -1208,19 +1244,30 @@ class LearningSession extends _$LearningSession {
     );
     AppLogger.log(
       'Session',
-      'exitLearningMode: begin mode=$mode chain=${state.playbackChain}',
+      'exitLearningMode: begin mode=$mode chain=${state.playbackChain} '
+          'itemId=${state.audioItemId}',
     );
+    if (mode == LearningMode.intensiveListen) {
+      AppLogger.log(
+        'IntensiveListen',
+        'event=exit-start itemId=$itemId '
+            'mediaType=${intensivePlayer?.state.hasVideo == true ? 'video' : 'audio'} '
+            'chain=${state.playbackChain} '
+            'elapsedMs=${intensivePlayer?.elapsed.inMilliseconds ?? 0}',
+      );
+    }
 
     _playerStateSub?.cancel();
     _playerStateSub = null;
-    final usesMediaChain = state.playbackChain == LearningPlaybackChain.media;
-    if (mode == LearningMode.retell && usesMediaChain) {
+    final usesMediaEngine =
+        state.playbackChain == LearningPlaybackChain.mediaEngine;
+    if (mode == LearningMode.retell && usesMediaEngine) {
       _mediaRetellEntryGeneration += 1;
     }
-    if (mode == LearningMode.blindListen && usesMediaChain) {
+    if (mode == LearningMode.blindListen && usesMediaEngine) {
       _mediaBlindListenEntryGeneration += 1;
     }
-    if (mode == LearningMode.reviewDifficultPractice && usesMediaChain) {
+    if (mode == LearningMode.reviewDifficultPractice && usesMediaEngine) {
       _mediaReviewDifficultEntryGeneration += 1;
     }
     if (mode == LearningMode.reviewDifficultPractice) {
@@ -1249,17 +1296,29 @@ class LearningSession extends _$LearningSession {
       await ref.read(speechRecordingControllerProvider.notifier).fullReset();
     }
 
-    if (usesMediaChain) {
+    if (usesMediaEngine) {
       AppLogger.log(
         'Session',
         'exitLearningMode: releasing media chain mode=$mode',
       );
       await ref.read(mediaEngineProvider.notifier).releaseFromScreen();
+      if (mode == LearningMode.intensiveListen) {
+        final freePlayer = ref.read(listeningPracticeProvider.notifier);
+        freePlayer.resumeListeners();
+        await freePlayer.syncBookmarks();
+      }
       await _flushLearnedVocabulary();
       ref.read(dailyStudyTimeProvider.notifier).refresh();
       ref.invalidate(studyDurationRecordsProvider);
       ref.read(studyStatsNotifierProvider.notifier).refresh();
       state = const LearningSessionState();
+      if (mode == LearningMode.intensiveListen) {
+        AppLogger.log(
+          'IntensiveListen',
+          'event=exit-complete itemId=${itemId ?? 'unknown'} '
+              'mediaChainReleased=true',
+        );
+      }
       AppLogger.log(
         'Session',
         'exitLearningMode: complete mode=$mode media chain',

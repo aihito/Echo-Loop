@@ -384,7 +384,7 @@ void main() {
 
       final session = container.read(learningSessionProvider);
       expect(session.learningMode, LearningMode.intensiveListen);
-      expect(session.playbackChain, LearningPlaybackChain.media);
+      expect(session.playbackChain, LearningPlaybackChain.mediaEngine);
       expect(session.audioItemId, testVideoItem.id);
       expect(lp.loadAudioCalls, isEmpty);
       expect(find.text('Listen sentence by sentence'), findsOneWidget);
@@ -425,7 +425,7 @@ void main() {
 
       final session = container.read(learningSessionProvider);
       expect(session.learningMode, LearningMode.blindListen);
-      expect(session.playbackChain, LearningPlaybackChain.media);
+      expect(session.playbackChain, LearningPlaybackChain.mediaEngine);
       expect(session.audioItemId, testVideoItem.id);
       expect(lp.loadAudioCalls, isEmpty);
       expect(find.text('Listen without subtitles'), findsOneWidget);
@@ -490,7 +490,7 @@ void main() {
 
       final session = container.read(learningSessionProvider);
       expect(session.learningMode, LearningMode.blindListen);
-      expect(session.playbackChain, LearningPlaybackChain.media);
+      expect(session.playbackChain, LearningPlaybackChain.mediaEngine);
       expect(session.isFreePlay, isTrue);
       expect(session.catchUpStage, LearningStage.review1);
       expect(session.catchUpSubStage, SubStageType.blindListen);

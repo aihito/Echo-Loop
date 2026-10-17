@@ -526,7 +526,7 @@ void main() {
               const LearningSessionState(
                 learningMode: LearningMode.reviewDifficultPractice,
                 audioItemId: 'video-1',
-                playbackChain: LearningPlaybackChain.media,
+                playbackChain: LearningPlaybackChain.mediaEngine,
               ),
             ),
           ),

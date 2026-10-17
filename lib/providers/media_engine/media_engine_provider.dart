@@ -262,10 +262,11 @@ class MediaEngine extends _$MediaEngine {
   }) async {
     _wordHighlightCompletionSessionId = null;
     _wordHighlightPlaybackStatus.reset();
+    final currentBackend = _backend;
     AppLogger.log(
       'MediaEngine',
       'loadMedia: begin id=${item.id} session=${state.sessionId} '
-          'backend=${identityHashCode(_backend)}',
+          'backend=${currentBackend == null ? 'uninitialized' : identityHashCode(currentBackend)}',
     );
     await ensureChain();
     // media_kit 前台播放不依赖 AudioService；测试 fake backend 也不应触发

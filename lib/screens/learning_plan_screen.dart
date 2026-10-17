@@ -1432,38 +1432,22 @@ class _LearningPlanScreenState extends ConsumerState<LearningPlanScreen> {
       onStartPractice: (playbackSpeed, pause) async {
         final session = ref.read(learningSessionProvider.notifier);
         final resolved = prefs.resolve(slot, smartSpeed: 1.0);
-        if (audioItem.isVideo) {
-          if (!context.mounted) return;
-          context.push(
-            AppRoutes.intensiveListenPlayer(
-              widget.collectionId,
-              widget.audioItemId,
-            ),
-            extra: MediaLearningStartup(
-              loadKey: '${audioItem.id}:planned',
-              load: () => session.enterMediaIntensiveListenMode(
-                audioItem,
-                sentences,
-                settings: resolved,
-                settingsSlot: slot,
-              ),
-              cancel: session.cancelMediaIntensiveListenEntry,
-            ),
-          );
-          return;
-        }
-
-        await session.enterIntensiveListenMode(
-          widget.audioItemId,
-          sentences,
-          settings: resolved,
-          settingsSlot: slot,
-        );
         if (!context.mounted) return;
         context.push(
           AppRoutes.intensiveListenPlayer(
             widget.collectionId,
             widget.audioItemId,
+          ),
+          extra: MediaLearningStartup(
+            loadKey: '${audioItem.id}:planned',
+            load: () => session.enterIntensiveListenMode(
+              audioItem,
+              sentences,
+              settings: resolved,
+              settingsSlot: slot,
+            ),
+            cancel: session.cancelIntensiveListenEntry,
+            showVideoLoading: audioItem.isVideo,
           ),
         );
       },
@@ -2893,52 +2877,32 @@ class _FirstStudySection extends ConsumerWidget {
       onStartPractice: (playbackSpeed, pause) async {
         final notifier = ref.read(learningSessionProvider.notifier);
         final resolved = prefs.resolve(slot, smartSpeed: 1.0);
-        if (audioItem.isVideo) {
-          if (!context.mounted) return;
-          context.push(
-            AppRoutes.intensiveListenPlayer(collectionId, audioItemId),
-            extra: MediaLearningStartup(
-              loadKey: '${audioItem.id}:free-play',
-              load: () async {
-                final result = await notifier.enterMediaIntensiveListenMode(
-                  audioItem,
-                  sentences,
-                  isFreePlay: true,
-                  settings: resolved,
-                  settingsSlot: slot,
+        if (!context.mounted) return;
+        context.push(
+          AppRoutes.intensiveListenPlayer(collectionId, audioItemId),
+          extra: MediaLearningStartup(
+            loadKey: '${audioItem.id}:free-play',
+            load: () async {
+              final result = await notifier.enterIntensiveListenMode(
+                audioItem,
+                sentences,
+                isFreePlay: true,
+                settings: resolved,
+                settingsSlot: slot,
+              );
+              if (result == MediaLoadResult.ready) {
+                // 补做语义：跳过的精听完成后回收为已完成。
+                notifier.setCatchUp(
+                  LearningStage.firstLearn,
+                  SubStageType.intensiveListen,
                 );
-                if (result == MediaLoadResult.ready) {
-                  // 补做语义：跳过的精听完成后回收为已完成。
-                  notifier.setCatchUp(
-                    LearningStage.firstLearn,
-                    SubStageType.intensiveListen,
-                  );
-                }
-                return result;
-              },
-              cancel: notifier.cancelMediaIntensiveListenEntry,
-            ),
-          );
-          return;
-        }
-
-        await notifier.enterIntensiveListenMode(
-          audioItemId,
-          sentences,
-          isFreePlay: true,
-          settings: resolved,
-          settingsSlot: slot,
+              }
+              return result;
+            },
+            cancel: notifier.cancelIntensiveListenEntry,
+            showVideoLoading: audioItem.isVideo,
+          ),
         );
-        // 补做语义：跳过的精听完成后回收为已完成
-        notifier.setCatchUp(
-          LearningStage.firstLearn,
-          SubStageType.intensiveListen,
-        );
-        if (context.mounted) {
-          context.push(
-            AppRoutes.intensiveListenPlayer(collectionId, audioItemId),
-          );
-        }
       },
     );
   }

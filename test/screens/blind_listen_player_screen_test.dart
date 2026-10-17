@@ -161,7 +161,7 @@ void main() {
       final session = TestLearningSession(
         const LearningSessionState(
           learningMode: LearningMode.blindListen,
-          playbackChain: LearningPlaybackChain.media,
+          playbackChain: LearningPlaybackChain.mediaEngine,
         ),
       );
       await tester.pumpWidget(

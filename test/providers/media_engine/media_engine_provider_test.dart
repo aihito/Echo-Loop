@@ -469,11 +469,11 @@ void main() {
   test('releaseFromScreen 使 session 失效但保留 backend 供全局复用', () async {
     final engine = container.read(mediaEngineProvider.notifier);
     await engine.loadMedia(item(), 1.0);
-    final sid = engine.newSession();
+    final playbackSessionId = engine.newSession();
 
     await engine.releaseFromScreen();
 
-    expect(engine.isActiveSession(sid), isFalse);
+    expect(engine.isActiveSession(playbackSessionId), isFalse);
     expect(backend.pauseCalls, 1);
     expect(backend.stopCalls, 0);
     expect(router.isRouted, isFalse);
@@ -506,11 +506,11 @@ void main() {
     expect(container.read(mediaEngineProvider).subtitleTrackEnabled, isFalse);
   });
 
-  test('视频精听适配器按绝对句子区间播放并接管锁屏切句', () async {
+  test('MediaSentencePlaybackDriver按绝对句子区间播放并接管锁屏切句', () async {
     final engine = container.read(mediaEngineProvider.notifier);
     await engine.loadMedia(item(), 1.0);
-    final driver = MediaIntensiveListenPlaybackDriver(engine);
-    final sid = driver.newSession();
+    final driver = MediaSentencePlaybackDriver(engine);
+    final playbackSessionId = driver.newSession();
     var previousCalls = 0;
     var nextCalls = 0;
     driver.bindLockScreen(
@@ -527,7 +527,7 @@ void main() {
         startTime: Duration(seconds: 2),
         endTime: Duration(seconds: 5),
       ),
-      sid,
+      playbackSessionId,
     );
     await Future<void>.delayed(Duration.zero);
     expect(backend.seekCalls.last, const Duration(seconds: 2));

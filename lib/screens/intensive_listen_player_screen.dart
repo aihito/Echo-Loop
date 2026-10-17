@@ -24,7 +24,6 @@ import '../l10n/app_localizations.dart';
 import '../providers/learning_plan_provider.dart';
 import '../providers/learning_progress_provider.dart';
 import '../providers/learning_session/intensive_listen_player_provider.dart';
-import '../providers/audio_engine/audio_engine_provider.dart';
 import '../providers/media_engine/media_engine_provider.dart';
 import '../providers/learning_session/learning_session_provider.dart';
 import '../providers/intensive_annotation/intensive_annotation_phase.dart';
@@ -80,22 +79,12 @@ class IntensiveListenPlayerScreen extends ConsumerStatefulWidget {
 class _IntensiveListenPlayerScreenState
     extends ConsumerState<IntensiveListenPlayerScreen>
     with WakelockMixin {
-  WordHighlightSource _wordHighlightSource(bool usesMediaEngine) {
-    if (usesMediaEngine) {
-      final engine = ref.read(mediaEngineProvider.notifier);
-      return WordHighlightSource(
-        audioItemId: widget.audioItemId,
-        positionStream: engine.positionStream,
-        currentPosition: engine.currentPosition,
-        playbackStatus: engine.wordHighlightPlaybackStatus,
-        playbackStatusStream: engine.wordHighlightPlaybackStatusStream,
-      );
-    }
-    final engine = ref.read(audioEngineProvider.notifier);
+  WordHighlightSource _wordHighlightSource() {
+    final engine = ref.read(mediaEngineProvider.notifier);
     return WordHighlightSource(
       audioItemId: widget.audioItemId,
-      positionStream: engine.absolutePositionStream,
-      currentPosition: engine.absoluteCurrentPosition,
+      positionStream: engine.positionStream,
+      currentPosition: engine.currentPosition,
       playbackStatus: engine.wordHighlightPlaybackStatus,
       playbackStatusStream: engine.wordHighlightPlaybackStatusStream,
     );
@@ -150,7 +139,7 @@ class _IntensiveListenPlayerScreenState
           shortenIdleTimeout(5);
           unawaited(_handleCompleted());
         }
-        // 设置面板拖动播放速度时即时生效：把新速度推给 AudioEngine，
+        // 设置面板拖动播放速度时即时生效：把新速度推给当前播放驱动，
         // 不必等下一次播放前的 setSpeed。
         if (next.settings.playbackSpeed != prev.settings.playbackSpeed) {
           unawaited(
@@ -229,6 +218,7 @@ class _IntensiveListenPlayerScreenState
       loadKey: startup.loadKey,
       load: startup.load,
       cancel: startup.cancel,
+      showVideoLoading: startup.showVideoLoading,
       onReady: _handleMediaStartupReady,
       child: child,
     );
@@ -630,7 +620,7 @@ class _IntensiveListenPlayerScreenState
           s.stepFinished,
           s.playingSenseGroupIndex,
           s.playedSenseGroupIndices,
-          s.usesMediaEngine,
+          s.hasVideo,
         ),
       ),
     );
@@ -669,7 +659,7 @@ class _IntensiveListenPlayerScreenState
               }
             },
             child: PracticeMediaPresentationHost(
-              enabled: playerState.usesMediaEngine,
+              enabled: playerState.hasVideo,
               audioItemId: widget.audioItemId,
               isPlaying: playerState.isPlaying,
               onPlayPause: _handleCenter,
@@ -725,7 +715,7 @@ class _IntensiveListenPlayerScreenState
                           key: _dictPanelHostKey,
                           child: Column(
                             children: [
-                              if (playerState.usesMediaEngine) mediaSurface,
+                              if (playerState.hasVideo) mediaSurface,
                               PracticeProgressBar(
                                 current: playerState.currentSentenceIndex + 1,
                                 total: playerState.totalSentences,
@@ -783,9 +773,7 @@ class _IntensiveListenPlayerScreenState
                                         sentenceIndex ==
                                         playerState.currentSentenceIndex;
                                     final wordHighlightSource = isActivePage
-                                        ? _wordHighlightSource(
-                                            playerState.usesMediaEngine,
-                                          )
+                                        ? _wordHighlightSource()
                                         : null;
                                     final wordHighlightBinding =
                                         wordHighlightSource == null
@@ -842,7 +830,7 @@ class _IntensiveListenPlayerScreenState
                                                 playerState.isTextRevealed,
                                             horizontalPadding: EdgeInsets.zero,
                                             showHiddenTextPlaceholderLines:
-                                                !playerState.usesMediaEngine ||
+                                                !playerState.hasVideo ||
                                                 !presentation
                                                     .visualTrackVisible,
                                             // 仅当句子初始就是难句时才展示「取消标记 / 重新标记」按钮；

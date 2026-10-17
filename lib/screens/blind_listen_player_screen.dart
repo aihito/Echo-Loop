@@ -601,7 +601,7 @@ class _BlindListenPlayerScreenState
           enabled:
               mediaReady &&
               ref.read(learningSessionProvider).playbackChain ==
-                  LearningPlaybackChain.media,
+                  LearningPlaybackChain.mediaEngine,
           suppressVisualView: _isNavigatingToDetail,
           audioItemId: widget.audioItemId,
           isPlaying: playerState.isPlaying,

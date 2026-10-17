@@ -1,24 +1,26 @@
 import '../../models/sentence.dart';
 import '../../models/sentence_playback_result.dart';
-import '../audio_engine/audio_engine_provider.dart';
 import '../audio_engine/foreground_audio_engine_provider.dart';
 import '../media_engine/media_engine_provider.dart';
 import '../../services/app_logger.dart';
 
 /// 句子级学习任务依赖的最小播放契约。
 ///
-/// 学习状态机只描述“播放一句”，不关心底层是 just_audio 还是 media_kit。
-/// 音频适配器继续委托原引擎，视频适配器复用同一 MediaEngine。
+/// 学习状态机只描述“播放一句”，不持有具体播放器；精听音频和视频共用
+/// [MediaSentencePlaybackDriver]，其他任务可继续使用各自的适配器。
 abstract interface class SentencePlaybackDriver {
   int newSession();
-  bool isActiveSession(int sessionId);
+  bool isActiveSession(int playbackSessionId);
 
   /// 立即使当前播放失效并暂停底层引擎，迟到回调不得继续推进业务状态。
   Future<void> invalidateSession();
 
   Future<void> pause();
   Future<void> setSpeed(double speed);
-  Future<SentencePlaybackResult> playSentence(Sentence sentence, int sessionId);
+  Future<SentencePlaybackResult> playSentence(
+    Sentence sentence,
+    int playbackSessionId,
+  );
 
   /// 按指定速度完整播放一句；MediaEngine 实现自行管理底层播放请求。
   Future<SentencePlaybackResult> playSentenceWithSpeed(
@@ -44,41 +46,42 @@ abstract interface class IntensiveListenPlaybackDriver
   Future<SentencePlaybackResult> playRangeOnce(
     Duration start,
     Duration end,
-    int sessionId,
+    int playbackSessionId,
   );
 }
 
 /// 难句跟读原音频适配器；所有调用仍委托前台 just_audio 引擎。
 class ForegroundSentencePlaybackDriver implements SentencePlaybackDriver {
-  ForegroundSentencePlaybackDriver(this._engine);
+  ForegroundSentencePlaybackDriver(this._foregroundAudioEngine);
 
-  final ForegroundAudioEngine _engine;
-
-  @override
-  int newSession() => _engine.newSession();
+  final ForegroundAudioEngine _foregroundAudioEngine;
 
   @override
-  bool isActiveSession(int sessionId) => _engine.isActiveSession(sessionId);
+  int newSession() => _foregroundAudioEngine.newSession();
+
+  @override
+  bool isActiveSession(int playbackSessionId) =>
+      _foregroundAudioEngine.isActiveSession(playbackSessionId);
 
   @override
   Future<void> invalidateSession() async {
-    _engine.newSession();
-    await _engine.pause();
+    _foregroundAudioEngine.newSession();
+    await _foregroundAudioEngine.pause();
   }
 
   @override
-  Future<void> pause() => _engine.pause();
+  Future<void> pause() => _foregroundAudioEngine.pause();
 
   @override
-  Future<void> setSpeed(double speed) => _engine.setSpeed(speed);
+  Future<void> setSpeed(double speed) => _foregroundAudioEngine.setSpeed(speed);
 
   @override
   Future<SentencePlaybackResult> playSentence(
     Sentence sentence,
-    int sessionId,
+    int playbackSessionId,
   ) async {
-    await _engine.playClipOnce(sentence, sessionId);
-    return _engine.isActiveSession(sessionId)
+    await _foregroundAudioEngine.playClipOnce(sentence, playbackSessionId);
+    return _foregroundAudioEngine.isActiveSession(playbackSessionId)
         ? SentencePlaybackResult.completed
         : SentencePlaybackResult.cancelled;
   }
@@ -110,118 +113,27 @@ class ForegroundSentencePlaybackDriver implements SentencePlaybackDriver {
   void unbindLockScreen() {}
 }
 
-/// 原音频逐句精听适配器；所有调用仍原样委托给 AudioEngine。
-class AudioIntensiveListenPlaybackDriver
-    implements IntensiveListenPlaybackDriver {
-  AudioIntensiveListenPlaybackDriver(this._engine);
-
-  final AudioEngine _engine;
-
-  @override
-  int newSession() => _engine.newSession();
-
-  @override
-  bool isActiveSession(int sessionId) => _engine.isActiveSession(sessionId);
-
-  @override
-  Future<void> invalidateSession() async {
-    _engine.newSession();
-    await _engine.pause();
-  }
-
-  @override
-  Future<void> pause() => _engine.pause();
-
-  @override
-  Future<void> setSpeed(double speed) => _engine.setSpeed(speed);
-
-  @override
-  Future<SentencePlaybackResult> playSentence(
-    Sentence sentence,
-    int sessionId,
-  ) async {
-    await _engine.playClipOnce(sentence, sessionId);
-    return _engine.isActiveSession(sessionId)
-        ? SentencePlaybackResult.completed
-        : SentencePlaybackResult.cancelled;
-  }
-
-  @override
-  Future<SentencePlaybackResult> playSentenceWithSpeed(
-    Sentence sentence,
-    double speed,
-  ) async {
-    await setSpeed(speed);
-    return playSentence(sentence, newSession());
-  }
-
-  @override
-  Future<SentencePlaybackResult> playRangeOnce(
-    Duration start,
-    Duration end,
-    int sessionId,
-  ) async {
-    await _engine.playRangeOnce(start, end, sessionId);
-    return _engine.isActiveSession(sessionId)
-        ? SentencePlaybackResult.completed
-        : SentencePlaybackResult.cancelled;
-  }
-
-  @override
-  void bindLockScreen({
-    required Future<void> Function() onPlay,
-    required Future<void> Function() onPause,
-    required Future<void> Function() onNext,
-    required Future<void> Function() onPrevious,
-  }) {
-    _engine.setTransportHandlers(onPlay: onPlay, onPause: onPause);
-    _engine.setSkipHandlers(onPrevious: onPrevious, onNext: onNext);
-    _engine.setSeekHandlers(onRewind: null, onFastForward: null);
-  }
-
-  @override
-  void setSessionActive(bool active) {
-    _engine.setLogicalPlaying(active);
-    if (active) {
-      _engine.startKeepAlive();
-    } else {
-      _engine.stopKeepAlive();
-    }
-  }
-
-  @override
-  void setProgressFrozen(bool frozen) => _engine.setProgressFrozen(frozen);
-
-  @override
-  void unbindLockScreen() {
-    _engine.setTransportHandlers(onPlay: null, onPause: null);
-    _engine.setSkipHandlers(onPrevious: null, onNext: null);
-    _engine.setSeekHandlers(onRewind: null, onFastForward: null);
-    _engine.setLogicalPlaying(null);
-    _engine.setProgressFrozen(false);
-    _engine.stopKeepAlive();
-  }
-}
-
-/// 学习任务共享的媒体句子播放驱动；只操作 MediaEngine，不接管音频链路。
+/// 精听与其他媒体学习任务共用的句子播放驱动，统一通过 MediaEngine 播放音频和视频。
 class MediaSentencePlaybackDriver implements IntensiveListenPlaybackDriver {
-  MediaSentencePlaybackDriver(this._engine);
+  MediaSentencePlaybackDriver(this._mediaEngine);
 
-  final MediaEngine _engine;
+  final MediaEngine _mediaEngine;
   double _playbackSpeed = 1.0;
 
   @override
-  int newSession() => _engine.newSession();
+  int newSession() => _mediaEngine.newSession();
 
   @override
-  bool isActiveSession(int sessionId) => _engine.isActiveSession(sessionId);
+  bool isActiveSession(int playbackSessionId) =>
+      _mediaEngine.isActiveSession(playbackSessionId);
 
   @override
   Future<void> invalidateSession() =>
-      _engine.cancelActiveRange(reason: 'driver-invalidate');
+      _mediaEngine.cancelActiveRange(reason: 'driver-invalidate');
 
   @override
-  Future<void> pause() => _engine.cancelActiveRange(reason: 'driver-pause');
+  Future<void> pause() =>
+      _mediaEngine.cancelActiveRange(reason: 'driver-pause');
 
   @override
   Future<void> setSpeed(double speed) async {
@@ -232,54 +144,93 @@ class MediaSentencePlaybackDriver implements IntensiveListenPlaybackDriver {
   Future<SentencePlaybackResult> playSentenceWithSpeed(
     Sentence sentence,
     double speed,
-  ) => _playSentenceWithDiagnostics(sentence, speed);
+  ) => _playSentenceWithDiagnostics(
+    sentence,
+    speed,
+    playbackSessionId: _mediaEngine.currentSessionId,
+  );
 
   @override
   Future<SentencePlaybackResult> playSentence(
     Sentence sentence,
-    int sessionId,
-  ) => _engine.playRange(
-    sentence.startTime,
-    sentence.endTime,
-    speed: _playbackSpeed,
-    sessionId: sessionId,
+    int playbackSessionId,
+  ) => _playSentenceWithDiagnostics(
+    sentence,
+    _playbackSpeed,
+    playbackSessionId: playbackSessionId,
   );
 
   Future<SentencePlaybackResult> _playSentenceWithDiagnostics(
     Sentence sentence,
-    double speed,
-  ) async {
+    double speed, {
+    required int playbackSessionId,
+  }) async {
     AppLogger.log(
-      'SentencePlaybackDriver',
-      'start: sentence=${sentence.index} '
-          'range=${sentence.startTime.inMilliseconds}-'
-          '${sentence.endTime.inMilliseconds}ms',
+      'MediaSentencePlayback',
+      'event=sentence-start playbackSessionId=$playbackSessionId '
+          'sentenceIndex=${sentence.index} '
+          'rangeMs=${sentence.startTime.inMilliseconds}-'
+          '${sentence.endTime.inMilliseconds} speed=$speed',
     );
-    final result = await _engine.playRange(
-      sentence.startTime,
-      sentence.endTime,
-      speed: speed,
-      sessionId: _engine.currentSessionId,
-    );
-    AppLogger.log(
-      'SentencePlaybackDriver',
-      'return: sentence=${sentence.index} '
-          'position=${_engine.currentPosition.inMilliseconds}ms result=$result',
-    );
-    return result;
+    final timer = Stopwatch()..start();
+    try {
+      final result = await _mediaEngine.playRange(
+        sentence.startTime,
+        sentence.endTime,
+        speed: speed,
+        sessionId: playbackSessionId,
+      );
+      AppLogger.log(
+        'MediaSentencePlayback',
+        'event=sentence-result playbackSessionId=$playbackSessionId '
+            'sentenceIndex=${sentence.index} '
+            'positionMs=${_mediaEngine.currentPosition.inMilliseconds} '
+            'elapsedMs=${timer.elapsedMilliseconds} result=$result',
+      );
+      return result;
+    } catch (error) {
+      AppLogger.log(
+        'MediaSentencePlayback',
+        'event=sentence-exception playbackSessionId=$playbackSessionId '
+            'sentenceIndex=${sentence.index} error=$error',
+      );
+      rethrow;
+    }
   }
 
   @override
   Future<SentencePlaybackResult> playRangeOnce(
     Duration start,
     Duration end,
-    int sessionId,
-  ) => _engine.playRange(
-    start,
-    end,
-    speed: _playbackSpeed,
-    sessionId: sessionId,
-  );
+    int playbackSessionId,
+  ) async {
+    final speed = _playbackSpeed;
+    AppLogger.log(
+      'MediaSentencePlayback',
+      'event=range-once-start playbackSessionId=$playbackSessionId '
+          'rangeMs=${start.inMilliseconds}-${end.inMilliseconds} speed=$speed',
+    );
+    try {
+      final result = await _mediaEngine.playRange(
+        start,
+        end,
+        speed: speed,
+        sessionId: playbackSessionId,
+      );
+      AppLogger.log(
+        'MediaSentencePlayback',
+        'event=range-once-result playbackSessionId=$playbackSessionId result=$result '
+            'positionMs=${_mediaEngine.currentPosition.inMilliseconds}',
+      );
+      return result;
+    } catch (error) {
+      AppLogger.log(
+        'MediaSentencePlayback',
+        'event=range-once-exception playbackSessionId=$playbackSessionId error=$error',
+      );
+      rethrow;
+    }
+  }
 
   @override
   void bindLockScreen({
@@ -288,32 +239,29 @@ class MediaSentencePlaybackDriver implements IntensiveListenPlaybackDriver {
     required Future<void> Function() onNext,
     required Future<void> Function() onPrevious,
   }) {
-    _engine.setTransportHandlers(onPlay: onPlay, onPause: onPause);
-    _engine.setSkipHandlers(onPrevious: onPrevious, onNext: onNext);
+    _mediaEngine.setTransportHandlers(onPlay: onPlay, onPause: onPause);
+    _mediaEngine.setSkipHandlers(onPrevious: onPrevious, onNext: onNext);
   }
 
   @override
   void setSessionActive(bool active) {
-    _engine.setLogicalPlaying(active);
+    _mediaEngine.setLogicalPlaying(active);
     if (active) {
-      _engine.startKeepAlive();
+      _mediaEngine.startKeepAlive();
     } else {
-      _engine.stopKeepAlive();
+      _mediaEngine.stopKeepAlive();
     }
   }
 
   @override
-  void setProgressFrozen(bool frozen) => _engine.setProgressFrozen(frozen);
+  void setProgressFrozen(bool frozen) => _mediaEngine.setProgressFrozen(frozen);
 
   @override
   void unbindLockScreen() {
-    _engine.setTransportHandlers(onPlay: null, onPause: null);
-    _engine.setSkipHandlers(onPrevious: null, onNext: null);
-    _engine.setLogicalPlaying(null);
-    _engine.setProgressFrozen(false);
-    _engine.stopKeepAlive();
+    _mediaEngine.setTransportHandlers(onPlay: null, onPause: null);
+    _mediaEngine.setSkipHandlers(onPrevious: null, onNext: null);
+    _mediaEngine.setLogicalPlaying(null);
+    _mediaEngine.setProgressFrozen(false);
+    _mediaEngine.stopKeepAlive();
   }
 }
-
-/// 旧名称兼容层；媒体句子驱动已供多个学习任务共享。
-typedef MediaIntensiveListenPlaybackDriver = MediaSentencePlaybackDriver;

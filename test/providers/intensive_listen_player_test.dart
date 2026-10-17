@@ -10,55 +10,59 @@ import 'package:echo_loop/database/enums.dart';
 import 'package:echo_loop/models/intensive_listen_settings.dart';
 import 'package:echo_loop/models/learning_progress.dart';
 import 'package:echo_loop/models/sentence.dart';
+import 'package:echo_loop/models/sentence_playback_result.dart';
 import 'package:echo_loop/models/study_stage.dart';
 import 'package:echo_loop/providers/audio_engine/audio_engine_provider.dart';
 import 'package:echo_loop/database/providers.dart';
 import 'package:echo_loop/providers/intensive_annotation/intensive_annotation_phase.dart';
 import 'package:echo_loop/providers/learning_progress_provider.dart';
 import 'package:echo_loop/providers/learning_session/intensive_listen_player_provider.dart';
+import 'package:echo_loop/providers/learning_session/intensive_listen_playback_driver.dart';
 import 'package:echo_loop/providers/learning_session/learning_session_provider.dart';
 import '../helpers/mock_providers.dart';
 
 class _ReplayTestAudioEngine extends TestAudioEngine {
-  int _sessionId = 0;
+  int _playbackSessionId = 0;
   final List<int> playedSentenceIndices = [];
 
   @override
   int newSession() {
-    _sessionId += 1;
-    return _sessionId;
+    _playbackSessionId += 1;
+    return _playbackSessionId;
   }
 
   @override
-  bool isActiveSession(int id) => id == _sessionId;
+  bool isActiveSession(int playbackSessionId) =>
+      playbackSessionId == _playbackSessionId;
 
   @override
-  Future<void> playClipOnce(Sentence sentence, int sessionId) async {
-    if (!isActiveSession(sessionId)) return;
+  Future<void> playClipOnce(Sentence sentence, int playbackSessionId) async {
+    if (!isActiveSession(playbackSessionId)) return;
     playedSentenceIndices.add(sentence.index);
     await Future<void>.delayed(const Duration(milliseconds: 10));
   }
 }
 
 class _OverlappingReplayAudioEngine extends TestAudioEngine {
-  int _sessionId = 0;
+  int _playbackSessionId = 0;
   final Map<int, Completer<void>> _playbackCompletions = {};
 
   @override
-  int newSession() => ++_sessionId;
+  int newSession() => ++_playbackSessionId;
 
   @override
-  bool isActiveSession(int id) => id == _sessionId;
+  bool isActiveSession(int playbackSessionId) =>
+      playbackSessionId == _playbackSessionId;
 
   @override
-  Future<void> playClipOnce(Sentence sentence, int sessionId) {
+  Future<void> playClipOnce(Sentence sentence, int playbackSessionId) {
     final completion = Completer<void>();
-    _playbackCompletions[sessionId] = completion;
+    _playbackCompletions[playbackSessionId] = completion;
     return completion.future;
   }
 
-  void completePlayback(int sessionId) {
-    final completion = _playbackCompletions[sessionId];
+  void completePlayback(int playbackSessionId) {
+    final completion = _playbackCompletions[playbackSessionId];
     if (completion != null && !completion.isCompleted) {
       completion.complete();
     }
@@ -66,21 +70,22 @@ class _OverlappingReplayAudioEngine extends TestAudioEngine {
 }
 
 class _DeferredBlindAudioEngine extends TestAudioEngine {
-  int _sessionId = 0;
+  int _playbackSessionId = 0;
   final Map<int, Completer<void>> _sentenceCompletions = {};
   final List<int> playedSentenceIndices = [];
 
   @override
   int newSession() {
-    _sessionId += 1;
-    return _sessionId;
+    _playbackSessionId += 1;
+    return _playbackSessionId;
   }
 
   @override
-  bool isActiveSession(int id) => id == _sessionId;
+  bool isActiveSession(int playbackSessionId) =>
+      playbackSessionId == _playbackSessionId;
 
   @override
-  Future<void> playClipOnce(Sentence sentence, int sessionId) {
+  Future<void> playClipOnce(Sentence sentence, int playbackSessionId) {
     playedSentenceIndices.add(sentence.index);
     final completer = Completer<void>();
     _sentenceCompletions[sentence.index] = completer;
@@ -94,6 +99,118 @@ class _DeferredBlindAudioEngine extends TestAudioEngine {
     }
   }
 }
+
+/// 精听状态机测试使用可控的 just_audio 播放替身。
+class _TestAudioIntensiveListenPlaybackDriver
+    implements IntensiveListenPlaybackDriver {
+  _TestAudioIntensiveListenPlaybackDriver(this._audioEngine);
+
+  final AudioEngine _audioEngine;
+
+  @override
+  int newSession() => _audioEngine.newSession();
+
+  @override
+  bool isActiveSession(int playbackSessionId) =>
+      _audioEngine.isActiveSession(playbackSessionId);
+
+  @override
+  Future<void> invalidateSession() async {
+    _audioEngine.newSession();
+    await _audioEngine.pause();
+  }
+
+  @override
+  Future<void> pause() => _audioEngine.pause();
+
+  @override
+  Future<void> setSpeed(double speed) => _audioEngine.setSpeed(speed);
+
+  @override
+  Future<SentencePlaybackResult> playSentence(
+    Sentence sentence,
+    int playbackSessionId,
+  ) async {
+    await _audioEngine.playClipOnce(sentence, playbackSessionId);
+    return _audioEngine.isActiveSession(playbackSessionId)
+        ? SentencePlaybackResult.completed
+        : SentencePlaybackResult.cancelled;
+  }
+
+  @override
+  Future<SentencePlaybackResult> playSentenceWithSpeed(
+    Sentence sentence,
+    double speed,
+  ) async {
+    await setSpeed(speed);
+    return playSentence(sentence, newSession());
+  }
+
+  @override
+  Future<SentencePlaybackResult> playRangeOnce(
+    Duration start,
+    Duration end,
+    int playbackSessionId,
+  ) async {
+    await _audioEngine.playRangeOnce(start, end, playbackSessionId);
+    return _audioEngine.isActiveSession(playbackSessionId)
+        ? SentencePlaybackResult.completed
+        : SentencePlaybackResult.cancelled;
+  }
+
+  @override
+  void bindLockScreen({
+    required Future<void> Function() onPlay,
+    required Future<void> Function() onPause,
+    required Future<void> Function() onNext,
+    required Future<void> Function() onPrevious,
+  }) {
+    _audioEngine.setTransportHandlers(onPlay: onPlay, onPause: onPause);
+    _audioEngine.setSkipHandlers(onPrevious: onPrevious, onNext: onNext);
+    _audioEngine.setSeekHandlers(onRewind: null, onFastForward: null);
+  }
+
+  @override
+  void setSessionActive(bool active) {
+    _audioEngine.setLogicalPlaying(active);
+    if (active) {
+      _audioEngine.startKeepAlive();
+    } else {
+      _audioEngine.stopKeepAlive();
+    }
+  }
+
+  @override
+  void setProgressFrozen(bool frozen) => _audioEngine.setProgressFrozen(frozen);
+
+  @override
+  void unbindLockScreen() {
+    _audioEngine.setTransportHandlers(onPlay: null, onPause: null);
+    _audioEngine.setSkipHandlers(onPrevious: null, onNext: null);
+    _audioEngine.setSeekHandlers(onRewind: null, onFastForward: null);
+    _audioEngine.setLogicalPlaying(null);
+    _audioEngine.setProgressFrozen(false);
+    _audioEngine.stopKeepAlive();
+  }
+}
+
+/// 精听状态机测试显式注入可控播放替身，不走生产默认 MediaEngine 驱动。
+Future<void> _initializeWithTestAudio(
+  ProviderContainer container,
+  IntensiveListenPlayer notifier,
+  List<Sentence> sentences, {
+  int startIndex = 0,
+  IntensiveListenSettings settings = const IntensiveListenSettings(),
+  String? settingsSlot,
+}) => notifier.initialize(
+  sentences,
+  startIndex: startIndex,
+  settings: settings,
+  settingsSlot: settingsSlot,
+  playbackDriver: _TestAudioIntensiveListenPlaybackDriver(
+    container.read(audioEngineProvider.notifier),
+  ),
+);
 
 class _RecordingLearningProgressNotifier extends TestLearningProgressNotifier {
   _RecordingLearningProgressNotifier(super.initialState);
@@ -444,7 +561,7 @@ void main() {
         endTime: const Duration(seconds: 2),
       );
 
-      await notifier.initialize([sentence]);
+      await _initializeWithTestAudio(container, notifier, [sentence]);
       await notifier.startPlaying();
 
       expect(studyTimeService.sentencePlaybacks, hasLength(1));
@@ -459,7 +576,11 @@ void main() {
       final audioEngine = _DeferredBlindAudioEngine();
       container = createContainer(audioEngine: audioEngine);
       final notifier = container.read(intensiveListenPlayerProvider.notifier);
-      await notifier.initialize(createTestSentences(count: 1));
+      await _initializeWithTestAudio(
+        container,
+        notifier,
+        createTestSentences(count: 1),
+      );
 
       unawaited(notifier.startPlaying());
       await Future<void>.delayed(Duration.zero);
@@ -472,7 +593,11 @@ void main() {
     test('讲解页完整重播写入输入统计', () async {
       container = createContainer();
       final notifier = container.read(intensiveListenPlayerProvider.notifier);
-      await notifier.initialize(createTestSentences(count: 1));
+      await _initializeWithTestAudio(
+        container,
+        notifier,
+        createTestSentences(count: 1),
+      );
 
       notifier.enterAnnotationMode();
       await notifier.replayInAnnotationMode();
@@ -489,7 +614,11 @@ void main() {
       await withClock(Clock(() => now), () async {
         container = createContainer();
         final notifier = container.read(intensiveListenPlayerProvider.notifier);
-        await notifier.initialize(createTestSentences(count: 1));
+        await _initializeWithTestAudio(
+          container,
+          notifier,
+          createTestSentences(count: 1),
+        );
         now = now.add(const Duration(seconds: 3));
 
         await notifier.disposePlayer();
@@ -521,7 +650,11 @@ void main() {
 
     test('跳转到合法句子更新 currentSentenceIndex', () async {
       final notifier = container.read(intensiveListenPlayerProvider.notifier);
-      await notifier.initialize(createTestSentences(count: 10));
+      await _initializeWithTestAudio(
+        container,
+        notifier,
+        createTestSentences(count: 10),
+      );
 
       await notifier.goToSentence(6);
 
@@ -533,7 +666,11 @@ void main() {
 
     test('越界索引被 clamp 到合法范围', () async {
       final notifier = container.read(intensiveListenPlayerProvider.notifier);
-      await notifier.initialize(createTestSentences(count: 5));
+      await _initializeWithTestAudio(
+        container,
+        notifier,
+        createTestSentences(count: 5),
+      );
 
       await notifier.goToSentence(99);
       expect(
@@ -550,7 +687,11 @@ void main() {
 
     test('跳到当前句不变化（no-op）', () async {
       final notifier = container.read(intensiveListenPlayerProvider.notifier);
-      await notifier.initialize(createTestSentences(count: 5));
+      await _initializeWithTestAudio(
+        container,
+        notifier,
+        createTestSentences(count: 5),
+      );
       await notifier.goToSentence(2);
 
       // 制造一个可观察的临时状态，再跳到同一句应保持不变
@@ -586,7 +727,7 @@ void main() {
       sentences[3].isBookmarked = true;
 
       final notifier = container.read(intensiveListenPlayerProvider.notifier);
-      await notifier.initialize(sentences);
+      await _initializeWithTestAudio(container, notifier, sentences);
 
       final state = container.read(intensiveListenPlayerProvider);
       expect(state.difficultSentences, {1, 3});
@@ -596,7 +737,7 @@ void main() {
       final sentences = createTestSentences(count: 3);
 
       final notifier = container.read(intensiveListenPlayerProvider.notifier);
-      await notifier.initialize(sentences);
+      await _initializeWithTestAudio(container, notifier, sentences);
 
       final state = container.read(intensiveListenPlayerProvider);
       expect(state.difficultSentences, isEmpty);
@@ -609,7 +750,7 @@ void main() {
       }
 
       final notifier = container.read(intensiveListenPlayerProvider.notifier);
-      await notifier.initialize(sentences);
+      await _initializeWithTestAudio(container, notifier, sentences);
 
       final state = container.read(intensiveListenPlayerProvider);
       expect(state.difficultSentences, {0, 1, 2});
@@ -630,7 +771,11 @@ void main() {
       addTearDown(container.dispose);
 
       final notifier = container.read(intensiveListenPlayerProvider.notifier);
-      await notifier.initialize(createTestSentences(count: 3));
+      await _initializeWithTestAudio(
+        container,
+        notifier,
+        createTestSentences(count: 3),
+      );
 
       unawaited(notifier.startPlaying());
       await Future<void>.delayed(Duration.zero);
@@ -674,7 +819,11 @@ void main() {
       addTearDown(container.dispose);
 
       final notifier = container.read(intensiveListenPlayerProvider.notifier);
-      await notifier.initialize(createTestSentences(count: 3));
+      await _initializeWithTestAudio(
+        container,
+        notifier,
+        createTestSentences(count: 3),
+      );
 
       unawaited(notifier.startPlaying());
       await Future<void>.delayed(Duration.zero);
@@ -714,7 +863,12 @@ void main() {
       addTearDown(container.dispose);
 
       final notifier = container.read(intensiveListenPlayerProvider.notifier);
-      await notifier.initialize(createTestSentences(count: 3), startIndex: 1);
+      await _initializeWithTestAudio(
+        container,
+        notifier,
+        createTestSentences(count: 3),
+        startIndex: 1,
+      );
 
       unawaited(notifier.startPlaying());
       await Future<void>.delayed(Duration.zero);
@@ -753,7 +907,11 @@ void main() {
       addTearDown(container.dispose);
 
       final notifier = container.read(intensiveListenPlayerProvider.notifier);
-      await notifier.initialize(createTestSentences(count: 3));
+      await _initializeWithTestAudio(
+        container,
+        notifier,
+        createTestSentences(count: 3),
+      );
 
       unawaited(notifier.startPlaying());
       await Future<void>.delayed(Duration.zero);
@@ -803,7 +961,7 @@ void main() {
         ],
       );
       notifier = container.read(intensiveListenPlayerProvider.notifier);
-      await notifier.initialize(sentences);
+      await _initializeWithTestAudio(container, notifier, sentences);
     });
 
     tearDown(() => container.dispose());
@@ -881,7 +1039,9 @@ void main() {
       final replayNotifier = replayContainer.read(
         intensiveListenPlayerProvider.notifier,
       );
-      await replayNotifier.initialize(
+      await _initializeWithTestAudio(
+        replayContainer,
+        replayNotifier,
         sentences,
         settings: const IntensiveListenSettings(
           repeatCount: 3,
@@ -924,7 +1084,9 @@ void main() {
       final replayNotifier = replayContainer.read(
         intensiveListenPlayerProvider.notifier,
       );
-      await replayNotifier.initialize(
+      await _initializeWithTestAudio(
+        replayContainer,
+        replayNotifier,
         sentences,
         settings: const IntensiveListenSettings(
           repeatCount: 3,
@@ -998,7 +1160,11 @@ void main() {
       final overlappingNotifier = overlappingContainer.read(
         intensiveListenPlayerProvider.notifier,
       );
-      await overlappingNotifier.initialize(sentences);
+      await _initializeWithTestAudio(
+        overlappingContainer,
+        overlappingNotifier,
+        sentences,
+      );
       overlappingNotifier.enterAnnotationMode();
 
       final firstReplay = overlappingNotifier.exitAnnotationMode();
@@ -1039,7 +1205,11 @@ void main() {
       final pausedNotifier = pausedContainer.read(
         intensiveListenPlayerProvider.notifier,
       );
-      await pausedNotifier.initialize(sentences);
+      await _initializeWithTestAudio(
+        pausedContainer,
+        pausedNotifier,
+        sentences,
+      );
       pausedNotifier.enterAnnotationMode();
 
       final replay = pausedNotifier.exitAnnotationMode();
@@ -1089,7 +1259,12 @@ void main() {
       addTearDown(container.dispose);
 
       final notifier = container.read(intensiveListenPlayerProvider.notifier);
-      await notifier.initialize(createTestSentences(count: 3), startIndex: 1);
+      await _initializeWithTestAudio(
+        container,
+        notifier,
+        createTestSentences(count: 3),
+        startIndex: 1,
+      );
       await notifier.startPlaying();
       await Future<void>.delayed(const Duration(milliseconds: 1));
 
@@ -1137,7 +1312,12 @@ void main() {
       addTearDown(container.dispose);
 
       final notifier = container.read(intensiveListenPlayerProvider.notifier);
-      await notifier.initialize(createTestSentences(count: 3), startIndex: 2);
+      await _initializeWithTestAudio(
+        container,
+        notifier,
+        createTestSentences(count: 3),
+        startIndex: 2,
+      );
       await notifier.startPlaying();
       await Future<void>.delayed(const Duration(milliseconds: 1));
 
@@ -1286,7 +1466,7 @@ void main() {
         ],
       );
       notifier = container.read(intensiveListenPlayerProvider.notifier);
-      await notifier.initialize(sentences);
+      await _initializeWithTestAudio(container, notifier, sentences);
       // 切换到手动模式
       notifier.updateSettings(
         const IntensiveListenSettings(controlMode: ShadowingControlMode.manual),
@@ -1458,7 +1638,7 @@ void main() {
       ];
 
       final notifier = container.read(intensiveListenPlayerProvider.notifier);
-      await notifier.initialize(sentences);
+      await _initializeWithTestAudio(container, notifier, sentences);
       // 使用极短倒计时以加速测试
       notifier.updateSettings(
         const IntensiveListenSettings(

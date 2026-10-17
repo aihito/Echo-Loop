@@ -181,7 +181,7 @@ void main() {
     bool isCurrentSentenceAutoMarked = false,
     bool isCountdownPaused = false,
     bool isCountdownFastForward = false,
-    bool usesMediaEngine = false,
+    bool hasVideo = false,
   }) {
     return IntensiveListenState(
       currentSentenceIndex: currentSentenceIndex,
@@ -202,7 +202,7 @@ void main() {
       isCurrentSentenceAutoMarked: isCurrentSentenceAutoMarked,
       isCountdownPaused: isCountdownPaused,
       isCountdownFastForward: isCountdownFastForward,
-      usesMediaEngine: usesMediaEngine,
+      hasVideo: hasVideo,
     );
   }
 
@@ -326,7 +326,7 @@ void main() {
       late _RecordingIntensiveListenPlayer player;
       await tester.pumpWidget(
         createTestWidget(
-          playerState: createPlayerState(usesMediaEngine: true),
+          playerState: createPlayerState(hasVideo: true),
           mediaStartup: MediaIntensiveListenStartup(
             loadKey: 'video-1',
             load: () => load.future,
@@ -349,6 +349,36 @@ void main() {
 
       expect(find.byKey(const ValueKey('media-video-canvas')), findsOneWidget);
       expect(find.byIcon(Icons.tune), findsOneWidget);
+      expect(player.startPlayingCalls, 1);
+    });
+
+    testWidgets('音频启动任务显示普通加载状态且不创建视频画面', (tester) async {
+      final load = Completer<MediaLoadResult>();
+      late _RecordingIntensiveListenPlayer player;
+      await tester.pumpWidget(
+        createTestWidget(
+          playerState: createPlayerState(),
+          mediaStartup: MediaIntensiveListenStartup(
+            loadKey: 'audio-1',
+            load: () => load.future,
+            cancel: () async {},
+            showVideoLoading: false,
+          ),
+          playerFactory: (state, sentences) =>
+              player = _RecordingIntensiveListenPlayer(state, sentences),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Loading video…'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byKey(const ValueKey('media-video-canvas')), findsNothing);
+      expect(player.startPlayingCalls, 0);
+
+      load.complete(MediaLoadResult.ready);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('media-video-canvas')), findsNothing);
       expect(player.startPlayingCalls, 1);
     });
 
@@ -379,7 +409,7 @@ void main() {
 
     testWidgets('视频会话显示共享画面', (tester) async {
       await tester.pumpWidget(
-        createTestWidget(playerState: createPlayerState(usesMediaEngine: true)),
+        createTestWidget(playerState: createPlayerState(hasVideo: true)),
       );
       await tester.pump();
 
