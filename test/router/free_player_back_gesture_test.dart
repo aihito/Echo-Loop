@@ -43,8 +43,12 @@ void main() {
     await pumpFullAppWithAudio(
       tester,
       audioItem: createTestAudioItem(id: 'audio-1'),
-      overrides: [mediaPlaybackProvider.overrideWith(() => player)],
+      overrides: [
+        ...fullAppRouteTestStartupOverrides(),
+        mediaPlaybackProvider.overrideWith(() => player),
+      ],
     );
+    await tester.pump();
 
     final router = GoRouter.of(tester.element(find.byType(MainShell)));
     unawaited(router.push<void>(AppRoutes.audioPlayer('audio-1')));

@@ -95,8 +95,13 @@ void main() {
 
     await pumpFullApp(
       tester,
-      overrides: [bookmarkReviewProvider.overrideWith(() => review)],
+      overrides: [
+        ...fullAppRouteTestStartupOverrides(),
+        bookmarkReviewProvider.overrideWith(() => review),
+      ],
     );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
     final router = GoRouter.of(tester.element(find.byType(MainShell)));
     router.go(AppRoutes.favorites);
     await tester.pumpAndSettle();
@@ -126,8 +131,13 @@ void main() {
 
     await pumpFullApp(
       tester,
-      overrides: [favoriteVocabularyReviewProvider.overrideWith(() => review)],
+      overrides: [
+        ...fullAppRouteTestStartupOverrides(),
+        favoriteVocabularyReviewProvider.overrideWith(() => review),
+      ],
     );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
     final router = GoRouter.of(tester.element(find.byType(MainShell)));
     router.go(AppRoutes.favorites);
     await tester.pumpAndSettle();
@@ -154,8 +164,13 @@ void main() {
 
     await pumpFullApp(
       tester,
-      overrides: [bookmarkReviewProvider.overrideWith(() => review)],
+      overrides: [
+        ...fullAppRouteTestStartupOverrides(),
+        bookmarkReviewProvider.overrideWith(() => review),
+      ],
     );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
     final router = GoRouter.of(tester.element(find.byType(MainShell)));
     router.go(AppRoutes.favorites);
     await tester.pumpAndSettle();
@@ -178,8 +193,13 @@ void main() {
 
     await pumpFullApp(
       tester,
-      overrides: [favoriteVocabularyReviewProvider.overrideWith(() => review)],
+      overrides: [
+        ...fullAppRouteTestStartupOverrides(),
+        favoriteVocabularyReviewProvider.overrideWith(() => review),
+      ],
     );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
     final router = GoRouter.of(tester.element(find.byType(MainShell)));
     router.go(AppRoutes.favorites);
     await tester.pumpAndSettle();

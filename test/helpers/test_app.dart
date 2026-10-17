@@ -19,6 +19,9 @@ import 'package:echo_loop/database/app_database.dart'
     hide AudioItem, Collection;
 import 'package:echo_loop/database/providers.dart';
 import 'package:echo_loop/features/onboarding_survey/providers/onboarding_survey_provider.dart';
+import 'package:echo_loop/features/remote_config/remote_config.dart';
+import 'package:echo_loop/features/user_region/user_region_bootstrapper.dart';
+import 'package:echo_loop/features/user_region/user_region_providers.dart';
 import 'package:echo_loop/l10n/app_localizations.dart';
 import 'package:echo_loop/main.dart';
 import 'package:echo_loop/models/audio_engine_state.dart';
@@ -29,9 +32,13 @@ import 'package:echo_loop/models/sentence.dart';
 import 'package:echo_loop/database/enums.dart' show LearningStage;
 import 'package:echo_loop/providers/new_user_guide_provider.dart';
 import 'package:echo_loop/providers/package_info_provider.dart';
+import 'package:echo_loop/providers/startup_bootstrap_provider.dart';
 import 'package:echo_loop/providers/settings_provider.dart';
 import 'package:echo_loop/providers/audio_library_provider.dart';
 import 'package:echo_loop/providers/collection_provider.dart';
+import 'package:echo_loop/providers/saved_word_provider.dart';
+import 'package:echo_loop/providers/saved_sense_group_provider.dart';
+import 'package:echo_loop/providers/study_task_provider.dart';
 import 'package:echo_loop/providers/tag_provider.dart';
 import 'package:echo_loop/providers/listening_practice/listening_practice_provider.dart';
 import 'package:echo_loop/providers/audio_engine/audio_engine_provider.dart';
@@ -45,7 +52,6 @@ import 'package:echo_loop/providers/learning_session/intensive_listen_player_pro
 import 'package:echo_loop/providers/learning_session/retell_player_provider.dart';
 import 'package:echo_loop/providers/learning_session/review_difficult_practice_provider.dart';
 import 'package:echo_loop/providers/offline_asr_settings_provider.dart';
-import 'package:echo_loop/providers/saved_word_provider.dart';
 import 'package:echo_loop/providers/transcription_task_provider.dart';
 import 'package:echo_loop/router/app_router.dart';
 import 'package:echo_loop/theme/app_theme.dart';
@@ -295,6 +301,45 @@ class _DisabledGuideEnabledNotifier extends GuideEnabledNotifier {
   Future<void> setEnabled(bool enabled) async {
     state = false;
   }
+}
+
+/// 完整 App 的路由测试使用已完成的地区决策和失败的本地启动结果。
+///
+/// 这样启动门禁会挂载路由树，同时避免测试运行真实数据库初始化、远程配置
+/// 请求和本地启动成功后的后台副作用。
+List<Override> fullAppRouteTestStartupOverrides() => [
+  localStartupProvider.overrideWith(_FailedLocalStartupController.new),
+  userRegionBootstrapProvider.overrideWith(
+    (ref) async => const UserRegionBootstrapResult(
+      isChinaUser: false,
+      source: UserRegionDecisionSource.systemFallback,
+      remoteConfig: RemoteConfig.defaults,
+    ),
+  ),
+  bookmarkListProvider.overrideWith((ref) => Stream.value(const [])),
+  savedWordListProvider.overrideWith(_EmptySavedWordList.new),
+  savedSenseGroupListProvider.overrideWith(_EmptySavedSenseGroupList.new),
+  savedTextIndexProvider.overrideWithValue(const SavedTextIndex.empty()),
+  studyRecommendationProvider.overrideWithValue(
+    const AsyncData<AudioItem?>(null),
+  ),
+];
+
+class _FailedLocalStartupController extends LocalStartupController {
+  @override
+  Future<StartupReport> build() async => throw StateError(
+    'Local startup is outside the scope of this full-app route test.',
+  );
+}
+
+class _EmptySavedWordList extends SavedWordList {
+  @override
+  Stream<List<SavedWord>> build() => Stream.value(const []);
+}
+
+class _EmptySavedSenseGroupList extends SavedSenseGroupList {
+  @override
+  Stream<List<SavedSenseGroup>> build() => Stream.value(const []);
 }
 
 /// 在 flutter_test 中渲染完整 [EchoLoopApp] 并预置一份音频学习数据。

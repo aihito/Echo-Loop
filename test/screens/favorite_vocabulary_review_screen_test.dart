@@ -6,6 +6,9 @@ import 'package:echo_loop/features/memory_scheduler/domain/memory_model_adapter.
 import 'package:echo_loop/features/memory_scheduler/domain/memory_scheduler_results.dart';
 import 'package:echo_loop/features/memory_scheduler/domain/memory_schedule.dart';
 import 'package:echo_loop/features/scheduled_flashcard/domain/review_session_summary.dart';
+import 'package:echo_loop/features/remote_config/remote_config.dart';
+import 'package:echo_loop/features/user_region/user_region_bootstrapper.dart';
+import 'package:echo_loop/features/user_region/user_region_providers.dart';
 import 'package:echo_loop/l10n/app_localizations.dart';
 import 'package:echo_loop/models/dict_entry.dart';
 import 'package:echo_loop/models/dictionary/dictionary_lookup_result.dart';
@@ -246,6 +249,13 @@ Widget _app({
         ),
       ),
       sharedPreferencesProvider.overrideWithValue(_sharedPreferences),
+      userRegionBootstrapProvider.overrideWith(
+        (ref) async => const UserRegionBootstrapResult(
+          isChinaUser: false,
+          source: UserRegionDecisionSource.systemFallback,
+          remoteConfig: RemoteConfig.defaults,
+        ),
+      ),
       localDictionarySourceProvider.overrideWithValue(
         _TestLocalDictionarySource(),
       ),

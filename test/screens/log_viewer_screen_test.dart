@@ -128,8 +128,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
 
     expect(find.text('日志（最近 500 条）'), findsOneWidget);
-    expect(find.textContaining('line-0'), findsNothing);
-    expect(find.textContaining('line-519'), findsOneWidget);
+    expect(find.textContaining('line-0', findRichText: true), findsNothing);
+    final latestEntry = find.textContaining('line-519', findRichText: true);
+    await tester.scrollUntilVisible(
+      latestEntry,
+      400,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(latestEntry, findsOneWidget);
     expect(find.text('仅显示最近 500 条；分享日志可导出完整记录'), findsOneWidget);
   });
 
