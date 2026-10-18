@@ -1057,9 +1057,7 @@ class _IntensiveListenPlayerScreenState
                                         currentCount:
                                             playerState.currentPlayCount,
                                         totalCount:
-                                            playerState.settings.isManualMode
-                                            ? 1
-                                            : playerState.settings.repeatCount,
+                                            playerState.settings.repeatCount,
                                       ),
                                       statusSuffixText: _formatSpeed(
                                         playerState.settings.playbackSpeed,
@@ -1099,8 +1097,10 @@ class _AnnotationContent extends StatelessWidget {
   }
 }
 
+/// 自动模式在讲解页显示“继续”；手动模式沿用页脚的下一句导航。
 bool _showContinueButton(IntensiveListenState playerState) {
   return playerState.isAnnotationMode &&
+      !playerState.settings.isManualMode &&
       !playerState.isAnnotationReplay &&
       !playerState.isPauseBetweenSentences &&
       playerState.annotationState?.phase is! WaitingAnnotationPageTransition;

@@ -1427,7 +1427,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get intensiveListenControlModeAutoDesc => '自动循环、自动停顿、自动下一句';
 
   @override
-  String get intensiveListenControlModeManualDesc => '手动重听、手动下一句';
+  String get intensiveListenControlModeManualDesc => '按设置循环，手动下一句';
 
   @override
   String intensiveListenPauseFixedUnit(int seconds) {

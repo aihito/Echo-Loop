@@ -54,47 +54,40 @@ class _IntensiveListenSettingsSheet extends ConsumerWidget {
           // 播放速度（手动/自动模式下都生效）
           _buildPlaybackSpeedSection(l10n, theme, settings, ref),
 
-          // 循环次数和停顿设置仅在自动模式下显示
-          if (!settings.isManualMode) ...[
-            const SizedBox(height: AppSpacing.l),
+          const SizedBox(height: AppSpacing.l),
 
-            // 每句循环次数
-            _buildRepeatCountRow(l10n, theme, settings, ref),
-            if (settings.repeatCount != 1)
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(
-                  l10n.intensiveListenAnnotationReplayUsesRepeatCount,
-                ),
-                value: settings.annotationReplayUsesRepeatCount,
-                onChanged: (value) {
-                  ref
-                      .read(intensiveListenPlayerProvider.notifier)
-                      .updateSettings(
-                        settings.copyWith(
-                          annotationReplayUsesRepeatCount: value,
-                        ),
-                      );
-                },
-              ),
-            const SizedBox(height: AppSpacing.l),
-
-            // 句间停顿
-            Text(
-              l10n.intensiveListenPauseLabel,
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+          // 两种控制模式共用循环次数与停顿设置。
+          _buildRepeatCountRow(l10n, theme, settings, ref),
+          if (settings.repeatCount != 1)
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(l10n.intensiveListenAnnotationReplayUsesRepeatCount),
+              value: settings.annotationReplayUsesRepeatCount,
+              onChanged: (value) {
+                ref
+                    .read(intensiveListenPlayerProvider.notifier)
+                    .updateSettings(
+                      settings.copyWith(annotationReplayUsesRepeatCount: value),
+                    );
+              },
             ),
-            const SizedBox(height: AppSpacing.s),
+          const SizedBox(height: AppSpacing.l),
 
-            // 模式切换
-            _buildPauseModeSelector(l10n, settings, ref),
-            const SizedBox(height: AppSpacing.m),
+          // 句间停顿
+          Text(
+            l10n.intensiveListenPauseLabel,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.s),
 
-            // 模式详情
-            _buildPauseModeDetail(l10n, theme, settings, ref),
-          ],
+          // 模式切换
+          _buildPauseModeSelector(l10n, settings, ref),
+          const SizedBox(height: AppSpacing.m),
+
+          // 模式详情
+          _buildPauseModeDetail(l10n, theme, settings, ref),
         ],
       ),
     );

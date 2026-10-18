@@ -868,8 +868,7 @@ class IntensiveListenPlayer extends _$IntensiveListenPlayer {
       sentences: _sentences,
       startIndex: startIndex ?? state.currentSentenceIndex,
       config: BlindPracticeFlowConfig(
-        getRepeatCount: (_) =>
-            state.settings.isManualMode ? 1 : state.settings.repeatCount,
+        getRepeatCount: (_) => state.settings.repeatCount,
         getRepeatIntervalDuration: (sentence) =>
             calculatePauseDuration(sentence.duration, state.settings),
         getSentenceIntervalDuration: (sentence) =>

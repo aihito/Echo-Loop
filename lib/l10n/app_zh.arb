@@ -597,7 +597,7 @@
   "intensiveListenSettingsTemporaryHint": "设置会被记住，下次自动沿用",
   "intensiveListenPauseSmartDesc": "根据难度、句子长度和学习阶段自动调整",
   "intensiveListenControlModeAutoDesc": "自动循环、自动停顿、自动下一句",
-  "intensiveListenControlModeManualDesc": "手动重听、手动下一句",
+  "intensiveListenControlModeManualDesc": "按设置循环，手动下一句",
   "intensiveListenPauseFixedUnit": "{seconds}秒",
   "@intensiveListenPauseFixedUnit": {
     "placeholders": {

@@ -1466,10 +1466,13 @@ void main() {
         ],
       );
       notifier = container.read(intensiveListenPlayerProvider.notifier);
-      await _initializeWithTestAudio(container, notifier, sentences);
-      // 切换到手动模式
-      notifier.updateSettings(
-        const IntensiveListenSettings(controlMode: ShadowingControlMode.manual),
+      await _initializeWithTestAudio(
+        container,
+        notifier,
+        sentences,
+        settings: const IntensiveListenSettings(
+          controlMode: ShadowingControlMode.manual,
+        ),
       );
     });
 
@@ -1488,35 +1491,49 @@ void main() {
       expect(state.isPauseBetweenSentences, false);
     });
 
-    test('手动模式下退出标注重播后停止，不自动推进', () async {
+    test('手动模式从讲解页手动切句后进入下一句并退出讲解', () async {
       // 先正常播放一遍
       await notifier.startPlaying();
       // 进入标注模式
       notifier.enterAnnotationMode();
-      // 退出标注模式（触发重播）
-      await notifier.exitAnnotationMode();
+      // 手动下一句直接离开当前讲解并沿用手动播放流程
+      await notifier.goToSentence(1);
 
       final state = container.read(intensiveListenPlayerProvider);
-      // 重播完成后停止，不自动推进
+      expect(state.currentSentenceIndex, 1);
+      expect(state.isAnnotationMode, false);
+      expect(state.annotationState, isNull);
       expect(state.isPlaying, false);
       expect(state.isAnnotationReplay, false);
-      // 仍在第一句
-      expect(state.currentSentenceIndex, 0);
     });
 
-    test('手动模式下 repeatCount 被忽略，只播一遍', () async {
-      // 设置 repeatCount=3 但仍是手动模式
+    test('手动模式使用循环次数和句间停顿，循环中停留当前句', () async {
+      final repeatPause = Completer<IntensiveListenState>();
+      final subscription = container.listen(intensiveListenPlayerProvider, (
+        previous,
+        next,
+      ) {
+        if (!repeatPause.isCompleted && next.isPauseBetweenPlays) {
+          repeatPause.complete(next);
+        }
+      });
       notifier.updateSettings(
         const IntensiveListenSettings(
           controlMode: ShadowingControlMode.manual,
           repeatCount: 3,
+          pauseMode: PauseMode.fixed,
+          fixedPauseSeconds: 5,
         ),
       );
-      await notifier.startPlaying();
+      final state = await repeatPause.future;
+      subscription.close();
 
-      final state = container.read(intensiveListenPlayerProvider);
       expect(state.isPlaying, false);
-      expect(state.currentPlayCount, 1);
+      expect(state.currentPlayCount, 2);
+      expect(state.blindFlowState?.totalRepeats, 3);
+      expect(state.isPauseBetweenPlays, true);
+      expect(state.pauseDuration, const Duration(seconds: 5));
+      expect(state.isPauseBetweenSentences, false);
       expect(state.currentSentenceIndex, 0);
     });
   });

@@ -514,6 +514,23 @@ void main() {
       expect(find.text('Auto · Round 2/3 · 1.0x'), findsOneWidget);
     });
 
+    testWidgets('手动模式显示当前遍数和设置的总次数', (tester) async {
+      await tester.pumpWidget(
+        createTestWidget(
+          playerState: createPlayerState(
+            currentPlayCount: 2,
+            settings: const IntensiveListenSettings(
+              controlMode: ShadowingControlMode.manual,
+              repeatCount: 3,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Manual · Round 2/3 · 1.0x'), findsOneWidget);
+    });
+
     testWidgets('详情模式显示带文字的继续按钮', (tester) async {
       await tester.pumpWidget(
         createTestWidget(
@@ -545,6 +562,42 @@ void main() {
         continueButton.style?.padding?.resolve({}),
         const EdgeInsets.symmetric(horizontal: 16),
       );
+    });
+
+    testWidgets('手动模式讲解页使用下一句导航，不显示继续按钮', (tester) async {
+      late _RecordingIntensiveListenPlayer player;
+      await tester.pumpWidget(
+        createTestWidget(
+          playerState: createPlayerState(
+            currentSentenceIndex: 0,
+            totalSentences: 5,
+            settings: const IntensiveListenSettings(
+              controlMode: ShadowingControlMode.manual,
+            ),
+            isPlaying: false,
+            isAnnotationMode: true,
+          ),
+          playerFactory: (state, sentences) {
+            player = _RecordingIntensiveListenPlayer(state, sentences);
+            return player;
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('intensive-annotation-continue-button')),
+        findsNothing,
+      );
+      final nextButton = find.byIcon(Icons.skip_next_rounded);
+      expect(nextButton, findsOneWidget);
+
+      await tester.tap(nextButton);
+      await tester.pumpAndSettle();
+
+      expect(player.goToSentenceCalls, 1);
+      expect(player.currentIndex, 1);
+      expect(player.state.isAnnotationMode, isFalse);
     });
 
     testWidgets('从普通倒计时点击听不懂进入详情页时只显示继续按钮', (tester) async {

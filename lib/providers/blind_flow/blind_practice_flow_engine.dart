@@ -29,7 +29,7 @@ class BlindPracticeFlowConfig {
   /// 每成功播放一遍后的回调
   final void Function(Sentence sentence)? onSentencePlayed;
 
-  /// 是否为手动模式。手动模式下当前句播完后直接进入等待态。
+  /// 是否为手动模式。手动模式完成设置的循环后等待用户切句。
   final bool Function() isManualMode;
 
   const BlindPracticeFlowConfig({
@@ -149,13 +149,19 @@ class BlindPracticeFlowEngine {
     AppLogger.log(logTag, '-> WaitingForUser (from ${phase.runtimeType})');
   }
 
+  /// 重播当前句；手动模式从本轮第一遍重新开始。
   Future<void> replayCurrentSentence() async {
     if (_disposed) return;
+    final sentence = currentSentence;
     _waitAfterCurrentPrompt = false;
     _stopActiveResources();
     _updateState(
       _state.copyWith(
         phase: const BlindIdle(),
+        repeatIndex: _config.isManualMode() ? 0 : _state.repeatIndex,
+        totalRepeats: sentence == null
+            ? _state.totalRepeats
+            : _config.getRepeatCount(sentence),
         flowToken: _state.flowToken + 1,
       ),
     );
@@ -364,18 +370,18 @@ class BlindPracticeFlowEngine {
       return;
     }
 
-    if (_config.isManualMode()) {
-      _updateState(
-        _state.copyWith(
-          repeatIndex: 0,
-          totalRepeats: _config.getRepeatCount(sentence),
-          phase: const BlindWaitingForUser(BlindWaitingReason.userInteraction),
-        ),
-      );
-      return;
-    }
-
     if (_state.isLastRepeat) {
+      if (_config.isManualMode()) {
+        // 手动模式完成所有循环后停在当前句，不触发句间倒计时或自动推进。
+        _updateState(
+          _state.copyWith(
+            phase: const BlindWaitingForUser(
+              BlindWaitingReason.userInteraction,
+            ),
+          ),
+        );
+        return;
+      }
       unawaited(_startSentenceInterval(sentence));
       return;
     }

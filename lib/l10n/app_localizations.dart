@@ -2675,7 +2675,7 @@ abstract class AppLocalizations {
   /// No description provided for @intensiveListenControlModeManualDesc.
   ///
   /// In en, this message translates to:
-  /// **'Tap to replay, tap next'**
+  /// **'Repeat as configured, tap next'**
   String get intensiveListenControlModeManualDesc;
 
   /// No description provided for @intensiveListenPauseFixedUnit.

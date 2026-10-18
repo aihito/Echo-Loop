@@ -147,7 +147,27 @@ void main() {
       expect(find.text('讲解页按循环次数播放'), findsOneWidget);
     });
 
-    testWidgets('手动模式不显示讲解页循环开关', (tester) async {
+    testWidgets('手动模式显示循环和停顿设置', (tester) async {
+      await tester.pumpWidget(
+        createTestWidget(
+          playerState: const IntensiveListenState(
+            settings: IntensiveListenSettings(
+              controlMode: ShadowingControlMode.manual,
+              repeatCount: 2,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await openSheet(tester);
+
+      expect(find.text('每句循环次数'), findsOneWidget);
+      expect(find.text('句间停顿'), findsOneWidget);
+      expect(find.text('固定间隔'), findsOneWidget);
+      expect(find.text('讲解页按循环次数播放'), findsOneWidget);
+    });
+
+    testWidgets('手动模式默认一次循环并可修改循环和停顿设置', (tester) async {
       await tester.pumpWidget(
         createTestWidget(
           playerState: const IntensiveListenState(
@@ -160,7 +180,24 @@ void main() {
       await tester.pumpAndSettle();
       await openSheet(tester);
 
-      expect(find.text('讲解页按循环次数播放'), findsNothing);
+      expect(find.text('每句循环次数'), findsOneWidget);
+      expect(find.text('1 次'), findsOneWidget);
+      expect(find.text('句间停顿'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.arrow_drop_down));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('3 次').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('固定间隔'));
+      await tester.pumpAndSettle();
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.text('每句循环次数')),
+      );
+      final settings = container.read(intensiveListenPlayerProvider).settings;
+      expect(settings.repeatCount, 3);
+      expect(settings.pauseMode, PauseMode.fixed);
+      expect(settings.fixedPauseSeconds, 3);
     });
 
     testWidgets('显示句间停顿标签', (tester) async {

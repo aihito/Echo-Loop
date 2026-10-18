@@ -804,7 +804,7 @@
   "intensiveListenSettingsTemporaryHint": "Settings are remembered for next time",
   "intensiveListenPauseSmartDesc": "Auto-adjusted based on difficulty, sentence length, and learning stage",
   "intensiveListenControlModeAutoDesc": "Auto-loop, auto-pause, auto-next",
-  "intensiveListenControlModeManualDesc": "Tap to replay, tap next",
+  "intensiveListenControlModeManualDesc": "Repeat as configured, tap next",
   "intensiveListenPauseFixedUnit": "{seconds}s",
   "@intensiveListenPauseFixedUnit": {
     "placeholders": {

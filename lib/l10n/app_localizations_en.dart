@@ -1477,7 +1477,8 @@ class AppLocalizationsEn extends AppLocalizations {
       'Auto-loop, auto-pause, auto-next';
 
   @override
-  String get intensiveListenControlModeManualDesc => 'Tap to replay, tap next';
+  String get intensiveListenControlModeManualDesc =>
+      'Repeat as configured, tap next';
 
   @override
   String intensiveListenPauseFixedUnit(int seconds) {

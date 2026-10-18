@@ -49,9 +49,31 @@ void main() {
     await tester.pump();
 
     final autoLabel = tester.widget<Text>(find.text('自动 · 第 1/2 遍 · 1.0x'));
-    final manualLabel = tester.widget<Text>(find.text('手动 · 1.0x'));
+    final manualLabel = tester.widget<Text>(find.text('手动 · 第 1/2 遍 · 1.0x'));
 
     expect(manualLabel.style, autoLabel.style);
+  });
+
+  testWidgets('手动模式单次循环也显示遍数', (tester) async {
+    await tester.pumpWidget(
+      createTestApp(
+        Builder(
+          builder: (context) => PracticePlayCountLabel(
+            isManualMode: true,
+            playCountText: formatPracticePlayCount(
+              AppLocalizations.of(context)!,
+              currentCount: 1,
+              totalCount: 1,
+            ),
+            l10n: AppLocalizations.of(context)!,
+            theme: Theme.of(context),
+          ),
+        ),
+        locale: const Locale('zh'),
+      ),
+    );
+
+    expect(find.text('手动 · 第 1/1 遍'), findsOneWidget);
   });
 
   testWidgets('播放控制按钮提供 Material 悬浮按压和聚焦反馈', (tester) async {
