@@ -584,6 +584,8 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
                             source: wordHighlightSource,
                             sentenceStartMs: sentence.startTime.inMilliseconds,
                             sentenceEndMs: sentence.endTime.inMilliseconds,
+                            positionRollbackFloorMs:
+                                sentence.startTime.inMilliseconds,
                           )
                         : null,
                     isBookmarked: widget.bookmarkedSentenceIndices.contains(

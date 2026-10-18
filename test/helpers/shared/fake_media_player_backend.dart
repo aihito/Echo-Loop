@@ -36,6 +36,7 @@ class FakeMediaPlayerBackend implements MediaPlayerBackend {
   bool disposed = false;
   int disposeCalls = 0;
   bool closeStreamsOnDispose = true;
+  bool deferSeekPositionUpdate = false;
   Duration disposeDelay = Duration.zero;
   Duration pauseDelay = Duration.zero;
   Object? openError;
@@ -137,9 +138,11 @@ class FakeMediaPlayerBackend implements MediaPlayerBackend {
 
   @override
   Future<void> seek(Duration position) async {
-    _position = position;
     seekCalls.add(position);
-    positionController.add(position);
+    if (!deferSeekPositionUpdate) {
+      _position = position;
+      positionController.add(position);
+    }
   }
 
   @override

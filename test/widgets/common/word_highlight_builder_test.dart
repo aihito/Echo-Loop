@@ -22,6 +22,19 @@ const _timestamps = [
   ),
 ];
 
+const _timestampsAtOneSecond = [
+  WordTimestamp(
+    word: 'hello',
+    startTime: Duration(milliseconds: 1000),
+    endTime: Duration(milliseconds: 1300),
+  ),
+  WordTimestamp(
+    word: 'world',
+    startTime: Duration(milliseconds: 1300),
+    endTime: Duration(milliseconds: 1600),
+  ),
+];
+
 void main() {
   testWidgets('开关关闭时保持普通文本且不加载时间戳', (tester) async {
     var loadCount = 0;
@@ -113,22 +126,127 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('word:0'), findsOneWidget);
   });
+
+  testWidgets('区间起点之前的短暂位置回退不高亮前一意群末词', (tester) async {
+    final positions = StreamController<Duration>.broadcast();
+    final playbackStatuses =
+        StreamController<WordHighlightPlaybackStatus>.broadcast();
+    addTearDown(positions.close);
+    addTearDown(playbackStatuses.close);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appSettingsProvider.overrideWith(_TestSettings.enabledSettings),
+          wordTimestampsProvider(
+            'audio',
+          ).overrideWith((ref) async => _timestamps),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: WordHighlightBuilder(
+              text: 'hello world',
+              binding: _binding(
+                positions.stream,
+                playbackStatusStream: playbackStatuses.stream,
+                activeRangeStartMs: 300,
+              ),
+              builder: (context, index) => Text('word:$index'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    playbackStatuses.add(WordHighlightPlaybackStatus.playing);
+    positions.add(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(find.text('word:1'), findsOneWidget);
+
+    // iOS seek 后出现的起点前事件不能再命中上一意群最后一个词。
+    positions.add(const Duration(milliseconds: 290));
+    await tester.pumpAndSettle();
+    expect(find.text('word:null'), findsOneWidget);
+
+    positions.add(const Duration(milliseconds: 301));
+    await tester.pumpAndSettle();
+    expect(find.text('word:1'), findsOneWidget);
+  });
+
+  testWidgets('全文列表句首 seek 后短暂回退仍连续高亮首词', (tester) async {
+    final positions = StreamController<Duration>.broadcast();
+    final playbackStatuses =
+        StreamController<WordHighlightPlaybackStatus>.broadcast();
+    addTearDown(positions.close);
+    addTearDown(playbackStatuses.close);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appSettingsProvider.overrideWith(_TestSettings.enabledSettings),
+          wordTimestampsProvider(
+            'audio',
+          ).overrideWith((ref) async => _timestampsAtOneSecond),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: WordHighlightBuilder(
+              text: 'hello world',
+              binding: _binding(
+                positions.stream,
+                playbackStatusStream: playbackStatuses.stream,
+                currentPosition: const Duration(milliseconds: 1000),
+                sentenceStartMs: 1000,
+                sentenceEndMs: 1600,
+                positionRollbackFloorMs: 1000,
+              ),
+              builder: (context, index) => Text('word:$index'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    playbackStatuses.add(WordHighlightPlaybackStatus.playing);
+    positions.add(const Duration(milliseconds: 1000));
+    await tester.pumpAndSettle();
+    expect(find.text('word:0'), findsOneWidget);
+
+    // iOS seek 后回退 47ms 时，保持同一个首词，不出现 0 → null → 0。
+    positions.add(const Duration(milliseconds: 953));
+    await tester.pumpAndSettle();
+    expect(find.text('word:0'), findsOneWidget);
+
+    // 超过回退容差的旧位置仍按真实时间轴解析，不会提前高亮句首。
+    positions.add(const Duration(milliseconds: 749));
+    await tester.pumpAndSettle();
+    expect(find.text('word:null'), findsOneWidget);
+  });
 }
 
 WordHighlightBinding _binding(
   Stream<Duration> positionStream, {
   Stream<WordHighlightPlaybackStatus> playbackStatusStream =
       const Stream<WordHighlightPlaybackStatus>.empty(),
+  int? activeRangeStartMs,
+  int? positionRollbackFloorMs,
+  int sentenceStartMs = 0,
+  int sentenceEndMs = 1000,
+  Duration currentPosition = const Duration(milliseconds: 450),
 }) => WordHighlightBinding(
   source: WordHighlightSource(
     audioItemId: 'audio',
     positionStream: positionStream,
-    currentPosition: const Duration(milliseconds: 450),
+    currentPosition: currentPosition,
     playbackStatus: WordHighlightPlaybackStatus.idle,
     playbackStatusStream: playbackStatusStream,
   ),
-  sentenceStartMs: 0,
-  sentenceEndMs: 1000,
+  sentenceStartMs: sentenceStartMs,
+  sentenceEndMs: sentenceEndMs,
+  activeRangeStartMs: activeRangeStartMs,
+  positionRollbackFloorMs: positionRollbackFloorMs,
 );
 
 class _TestSettings extends AppSettings {

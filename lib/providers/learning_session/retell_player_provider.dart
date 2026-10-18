@@ -1140,8 +1140,8 @@ class RetellPlayer extends _$RetellPlayer {
     final start = sentences[startLocalIdx].startTime;
     final end = sentences.last.endTime;
 
-    // 订阅 position stream 实现句子高亮——必须等 clip+seek(0) 落定后才订阅，
-    // 否则 setClip/seek 过渡期的陈旧 position 会把高亮跳到错误句、污染断点。
+    // seek 命令返回后、播放前订阅句子位置流。命令回执不代表时间轴已更新；
+    // MediaEngine 会等起点位置事件确认后才开启逐词高亮。
     final result = await playback.playRange(
       start,
       end,

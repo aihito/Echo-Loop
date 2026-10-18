@@ -1475,8 +1475,8 @@ class _RetellPlayerScreenState extends ConsumerState<RetellPlayerScreen>
       final engine = ref.read(mediaEngineProvider.notifier);
       return WordHighlightSource(
         audioItemId: widget.audioItemId,
-        positionStream: engine.positionStream,
-        currentPosition: engine.currentPosition,
+        positionStream: engine.wordHighlightPositionStream,
+        currentPosition: engine.wordHighlightPosition,
         playbackStatus: engine.wordHighlightPlaybackStatus,
         playbackStatusStream: engine.wordHighlightPlaybackStatusStream,
       );

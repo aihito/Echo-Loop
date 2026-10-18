@@ -229,6 +229,88 @@ void main() {
     );
   });
 
+  test('playRange 等收到目标位置事件后才开启逐词高亮', () async {
+    final engine = container.read(mediaEngineProvider.notifier);
+    await engine.loadMedia(item(), 1.0);
+    backend.emitPosition(const Duration(milliseconds: 3999));
+    backend.deferSeekPositionUpdate = true;
+    backend.playStarted = Completer<void>();
+
+    final playback = engine.playRange(
+      const Duration(seconds: 4),
+      const Duration(seconds: 6),
+      speed: 1.0,
+    );
+    await backend.playStarted!.future;
+
+    expect(backend.playCalls, 1);
+    expect(
+      engine.wordHighlightPlaybackStatus,
+      WordHighlightPlaybackStatus.idle,
+    );
+
+    backend.emitPosition(const Duration(milliseconds: 3999));
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      engine.wordHighlightPlaybackStatus,
+      WordHighlightPlaybackStatus.idle,
+    );
+
+    final started = engine.wordHighlightPlaybackStatusStream.firstWhere(
+      (status) => status == WordHighlightPlaybackStatus.playing,
+    );
+    backend.emitPosition(const Duration(seconds: 4));
+    await started;
+    expect(
+      engine.wordHighlightPlaybackStatus,
+      WordHighlightPlaybackStatus.playing,
+    );
+
+    backend.emitPosition(const Duration(seconds: 6));
+    expect(await playback, SentencePlaybackResult.completed);
+  });
+
+  test('逐词高亮位置流会屏蔽播放区间起点前的陈旧样本', () async {
+    final engine = container.read(mediaEngineProvider.notifier);
+    await engine.loadMedia(item(), 1.0);
+    const rangeStart = Duration(seconds: 4);
+    final rollbackObserved = Completer<Duration>();
+    final highlightPositionSubscription = engine.wordHighlightPositionStream
+        .listen((position) {
+          if (backend.position < rangeStart && !rollbackObserved.isCompleted) {
+            rollbackObserved.complete(position);
+          }
+        });
+    addTearDown(highlightPositionSubscription.cancel);
+    backend.playStarted = Completer<void>();
+    backend.deferSeekPositionUpdate = true;
+
+    final playback = engine.playRange(
+      rangeStart,
+      const Duration(seconds: 6),
+      speed: 1.0,
+    );
+    await backend.playStarted!.future;
+
+    final started = engine.wordHighlightPlaybackStatusStream.firstWhere(
+      (status) => status == WordHighlightPlaybackStatus.playing,
+    );
+    backend.emitPosition(rangeStart);
+    await started;
+    backend.emitPosition(rangeStart - const Duration(milliseconds: 40));
+
+    expect(await rollbackObserved.future, rangeStart);
+    expect(backend.position, rangeStart - const Duration(milliseconds: 40));
+    expect(engine.wordHighlightPosition, rangeStart);
+
+    backend.emitPosition(const Duration(seconds: 6));
+    expect(await playback, SentencePlaybackResult.completed);
+
+    final positionAfterRange = rangeStart - const Duration(milliseconds: 40);
+    backend.emitPosition(positionAfterRange);
+    expect(engine.wordHighlightPosition, positionAfterRange);
+  });
+
   test('playRange 会替换旧请求，旧请求不能暂停新请求', () async {
     final engine = container.read(mediaEngineProvider.notifier);
     await engine.loadMedia(item(), 1.0);

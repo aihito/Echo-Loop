@@ -208,6 +208,35 @@ class _SenseGroupTextState extends ConsumerState<SenseGroupText> {
     ];
   }
 
+  /// 在间隔文本中同时按活动词和收藏掩码切分，覆盖数字等非英文 token。
+  List<InlineSpan> _activeAwareSpans(
+    String text,
+    int start,
+    int end,
+    List<bool> savedMask,
+    Color savedColor,
+    List<bool> activeMask,
+  ) {
+    final spans = <InlineSpan>[];
+    for (final (subStart, subEnd, isActive) in splitByMask(
+      start,
+      end,
+      activeMask,
+    )) {
+      spans.addAll(
+        _savedAwareSpans(
+          text,
+          subStart,
+          subEnd,
+          savedMask,
+          savedColor,
+          isActiveWord: isActive,
+        ),
+      );
+    }
+    return spans;
+  }
+
   /// 把高亮片段拍平为有序的单词匹配标志列表。
   ///
   /// 单词段产出一个标志（其 isMatched），间隔段（空白/标点）不产出。
@@ -262,13 +291,13 @@ class _SenseGroupTextState extends ConsumerState<SenseGroupText> {
       for (final match in _englishWordPattern.allMatches(text)) {
         if (match.start > last) {
           spans.addAll(
-            _savedAwareSpans(
+            _activeAwareSpans(
               text,
               last,
               match.start,
               mask,
               savedColor,
-              isActiveWord: activeMask[last],
+              activeMask,
             ),
           );
         }
@@ -292,13 +321,13 @@ class _SenseGroupTextState extends ConsumerState<SenseGroupText> {
       }
       if (last < text.length) {
         spans.addAll(
-          _savedAwareSpans(
+          _activeAwareSpans(
             text,
             last,
             text.length,
             mask,
             savedColor,
-            isActiveWord: activeMask[last],
+            activeMask,
           ),
         );
       }

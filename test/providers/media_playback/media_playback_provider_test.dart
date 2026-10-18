@@ -667,6 +667,36 @@ void main() {
     await controller.pause();
   });
 
+  test('点选全文句后 seek 短暂回退不切回相邻句', () async {
+    transcriptSentences = [
+      sentences[0].copyWith(endTime: const Duration(milliseconds: 59980)),
+      ...sentences.skip(1),
+    ];
+    final controller = await loadController();
+
+    await controller.selectFullSentence(1);
+    await Future<void>.delayed(Duration.zero);
+    expect(backend.playing, isTrue);
+
+    // 目标句前 40ms 更接近上一句末尾；这是 iOS seek 后日志中观察到的回退。
+    backend.emitPosition(const Duration(milliseconds: 59960));
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      container.read(mediaPlaybackProvider).position,
+      const Duration(milliseconds: 59960),
+    );
+    expect(container.read(mediaPlaybackProvider).currentFullIndex, 1);
+
+    // 位置越过短暂保护窗口后，播放焦点仍恢复按真实位置切换。
+    backend.emitPosition(const Duration(milliseconds: 60250));
+    await Future<void>.delayed(Duration.zero);
+    expect(container.read(mediaPlaybackProvider).currentFullIndex, 1);
+    backend.emitPosition(const Duration(milliseconds: 59960));
+    await Future<void>.delayed(Duration.zero);
+    expect(container.read(mediaPlaybackProvider).currentFullIndex, 0);
+    await controller.pause();
+  });
+
   test('整篇循环进入下一遍后播放图标状态恢复为播放中', () async {
     final controller = await loadController();
     const interval = Duration(milliseconds: 100);

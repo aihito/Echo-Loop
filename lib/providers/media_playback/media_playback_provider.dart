@@ -14,6 +14,7 @@ import '../../models/sentence_focus_reason.dart';
 import '../../models/sentence_playback_result.dart';
 import '../../models/sense_group_range_playback.dart';
 import '../../models/study_stage.dart';
+import '../../models/word_highlight_binding.dart';
 import '../../services/app_logger.dart';
 import '../../services/study_session_timer.dart';
 import '../../services/storage_service.dart';
@@ -42,6 +43,7 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
   int _playbackGen = 0;
   int _playbackSessionId = -1;
   bool _activeSentenceDrivenPlayback = false;
+  ({int index, Duration releaseAt})? _pendingFullSentenceFocus;
   bool _isInPlaybackInterval = false;
   int? _playbackIntervalGeneration;
 
@@ -344,6 +346,7 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
     _positionUpdatesEnabled = false;
     _playbackGen++;
     _pauseAfterPosition = null;
+    _pendingFullSentenceFocus = null;
     await _positionSub?.cancel();
     await _playingSub?.cancel();
     await _landscapeVideoSub?.cancel();
@@ -533,6 +536,7 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
     // backend 初始化期间可能先补发 0；断点已作为 Media(start) 传入，正式就绪前
     // 保持预读的正确位置，避免进度条从断点闪回 0 再恢复。
     if (!_positionUpdatesEnabled) return;
+    final previousFullIndex = state.currentFullIndex;
     state = state.copyWith(position: position);
     if (!_engine.isActiveSession(_playbackSessionId)) return;
     if (_engine.isPlaying) _recordGaplessStatsThrough(position);
@@ -545,6 +549,16 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
       return;
     }
     if (!_engine.isPlaying || _activeSentenceDrivenPlayback) return;
+    final pendingFocus = _pendingFullSentenceFocus;
+    if (pendingFocus != null) {
+      if (state.currentFullIndex != pendingFocus.index ||
+          position >= pendingFocus.releaseAt) {
+        _pendingFullSentenceFocus = null;
+      } else {
+        // 点句子后的短暂 seek 回退不应把列表焦点切回相邻句。
+        return;
+      }
+    }
     final idx = _nearestSentenceIndex(position);
     if (idx < 0) return;
     if (state.playlistMode == PlaylistMode.bookmarks) {
@@ -565,6 +579,13 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
         currentFullIndex: idx,
         requestSentenceFocus: true,
         sentenceFocusReason: SentenceFocusReason.playback,
+      );
+      AppLogger.log(
+        'MediaPlayback',
+        'position changed full-list focus from=$previousFullIndex to=$idx '
+            'position=${position.inMilliseconds}ms '
+            'backendPlaying=${_engine.isPlaying} '
+            'session=$_playbackSessionId',
       );
       _autoSaveProgress();
     }
@@ -669,6 +690,7 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
     _activeSentenceDrivenPlayback = false;
     _awaitingReplayFromStart = false;
     _pauseAfterPosition = null;
+    _pendingFullSentenceFocus = null;
     await _pausePlaying();
     await _engine.pause();
     _playbackSessionId = _engine.currentSessionId;
@@ -704,6 +726,7 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
     _activeSentenceDrivenPlayback = false;
     _awaitingReplayFromStart = false;
     _pauseAfterPosition = null;
+    _pendingFullSentenceFocus = null;
 
     if (state.sentences.isNotEmpty) {
       final idx = _nearestSentenceIndex(target);
@@ -773,12 +796,20 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
 
   Future<void> selectFullSentence(int index, {bool autoPlay = true}) async {
     if (index < 0 || index >= state.sentences.length) return;
+    final sentence = state.sentences[index];
     final wasPlaying = state.isPlaying;
     AppLogger.log(
       'MediaPlayback',
       'sentence selection begin source=full from=${state.currentFullIndex} '
-          'to=$index autoPlay=$autoPlay wasPlaying=$wasPlaying',
+          'to=$index range=${sentence.startTime.inMilliseconds}-'
+          '${sentence.endTime.inMilliseconds}ms autoPlay=$autoPlay '
+          'wasPlaying=$wasPlaying enginePosition='
+          '${_engine.currentPosition.inMilliseconds}ms '
+          'backendPlaying=${_engine.isPlaying}',
     );
+    _pendingFullSentenceFocus = autoPlay && !_usesSentenceDrivenPlayback
+        ? (index: index, releaseAt: _focusHoldReleasePosition(sentence))
+        : null;
     state = state.copyWith(
       currentFullIndex: index,
       lastPlayedFullIndex: index,
@@ -789,7 +820,9 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
     AppLogger.log(
       'MediaPlayback',
       'sentence selection aligned source=full index=$index '
-          'position=${state.position.inMilliseconds}ms autoPlay=$autoPlay',
+          'position=${state.position.inMilliseconds}ms '
+          'enginePosition=${_engine.currentPosition.inMilliseconds}ms '
+          'backendPlaying=${_engine.isPlaying} autoPlay=$autoPlay',
     );
     if (autoPlay) {
       AppLogger.log(
@@ -807,6 +840,7 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
   }) async {
     if (index < 0 || index >= state.sentences.length) return;
     if (!state.bookmarkedIndices.contains(index)) return;
+    _pendingFullSentenceFocus = null;
     final wasPlaying = state.isPlaying;
     AppLogger.log(
       'MediaPlayback',
@@ -910,6 +944,7 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
   Future<void> _moveToPosition(int pos) async {
     final playable = _playable;
     if (pos < 0 || pos >= playable.length) return;
+    _pendingFullSentenceFocus = null;
     final wasPlaying = state.isPlaying;
     final selected = playable[pos];
     if (state.playlistMode == PlaylistMode.bookmarks) {
@@ -1296,6 +1331,12 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
     }
     _resetGaplessStatsPosition(_engine.currentPosition);
     _playbackSessionId = _engine.currentSessionId;
+  }
+
+  Duration _focusHoldReleasePosition(Sentence sentence) {
+    final toleranceEnd =
+        sentence.startTime + wordHighlightSeekRollbackTolerance;
+    return toleranceEnd < sentence.endTime ? toleranceEnd : sentence.endTime;
   }
 
   bool _shouldRestartWhole() => _awaitingReplayFromStart || _isAtEnd();

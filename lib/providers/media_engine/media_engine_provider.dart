@@ -33,11 +33,13 @@ MediaSessionRouter mediaSessionRouter(Ref ref) => echoLoopMediaSessionRouter;
 @Riverpod(keepAlive: true)
 class MediaEngine extends _$MediaEngine {
   MediaPlayerBackend? _backend;
+  Stream<Duration>? _wordHighlightPositionStream;
   EchoLoopMediaHandler? _handler;
   MediaSessionRouter? _router;
   bool _disposingChain = false;
   int _rangeRequestId = 0;
   bool _hasActiveRangeRequest = false;
+  Duration? _activeRangeStart;
   int _activeRangeSessionId = 0;
   Future<void> _commandTail = Future<void>.value();
   int _resourceGeneration = 0;
@@ -80,6 +82,9 @@ class MediaEngine extends _$MediaEngine {
     final handler = EchoLoopMediaHandler(backend);
     final router = ref.read(mediaSessionRouterProvider);
     _backend = backend;
+    _wordHighlightPositionStream = backend.positionStream.map(
+      _positionForWordHighlight,
+    );
     _handler = handler;
     _router = router;
     _listenToWordHighlightPlayback(backend);
@@ -228,6 +233,7 @@ class MediaEngine extends _$MediaEngine {
       // 显式重试，而不是把仍可能存活的 native 资源变成不可达泄漏。
       _handler = null;
       _backend = null;
+      _wordHighlightPositionStream = null;
       _router = null;
       if (resetState) {
         state = const MediaEngineState().copyWith(
@@ -503,16 +509,31 @@ class MediaEngine extends _$MediaEngine {
     );
   }
 
-  Future<void> seek(Duration pos) => _enqueueLifecycle('seek', () async {
-    final wasPlaying = _backend?.playing ?? false;
-    await _handler?.seek(pos);
-    if (wasPlaying) {
-      _wordHighlightPlaybackStatus.markPlaying();
-    } else {
-      _wordHighlightCompletionSessionId = null;
-      _wordHighlightPlaybackStatus.markPositionSelected();
-    }
-  });
+  Future<void> seek(Duration pos) {
+    final backend = _backend;
+    AppLogger.log(
+      'MediaEngine',
+      'seek begin target=${pos.inMilliseconds}ms '
+          'position=${backend?.position.inMilliseconds}ms '
+          'playing=${backend?.playing}',
+    );
+    return _enqueueLifecycle('seek', () async {
+      final wasPlaying = _backend?.playing ?? false;
+      await _handler?.seek(pos);
+      AppLogger.log(
+        'MediaEngine',
+        'seek complete target=${pos.inMilliseconds}ms '
+            'position=${_backend?.position.inMilliseconds}ms '
+            'playing=${_backend?.playing}',
+      );
+      if (wasPlaying) {
+        _wordHighlightPlaybackStatus.markPlaying();
+      } else {
+        _wordHighlightCompletionSessionId = null;
+        _wordHighlightPlaybackStatus.markPositionSelected();
+      }
+    });
+  }
 
   Future<void> setSpeed(double speed) =>
       _enqueueLifecycle('set-speed', () async {
@@ -539,9 +560,33 @@ class MediaEngine extends _$MediaEngine {
 
   bool get isPlaying => _backend?.playing ?? false;
   Duration get currentPosition => _backend?.position ?? Duration.zero;
+
+  /// 当前高亮位置；活动区间内不会早于区间起点。
+  Duration get wordHighlightPosition {
+    final position = currentPosition;
+    final rangeStart = _activeWordHighlightRangeStart;
+    return rangeStart != null && position < rangeStart ? rangeStart : position;
+  }
+
   Duration? get totalDuration => state.totalDuration;
   Stream<Duration> get positionStream =>
       _backend?.positionStream ?? const Stream<Duration>.empty();
+
+  /// 逐词高亮使用的时间轴，屏蔽活动播放区间起点前的陈旧位置样本。
+  Stream<Duration> get wordHighlightPositionStream =>
+      _wordHighlightPositionStream ?? const Stream<Duration>.empty();
+
+  /// 将活动区间起点之前的位置样本视作起点，避免逐词高亮向前闪回。
+  Duration _positionForWordHighlight(Duration position) {
+    final rangeStart = _activeWordHighlightRangeStart;
+    return rangeStart != null && position < rangeStart ? rangeStart : position;
+  }
+
+  Duration? get _activeWordHighlightRangeStart =>
+      _hasActiveRangeRequest && isActiveSession(_activeRangeSessionId)
+      ? _activeRangeStart
+      : null;
+
   Stream<bool> get playingStream =>
       _backend?.playingStream ?? const Stream<bool>.empty();
 
@@ -617,6 +662,7 @@ class MediaEngine extends _$MediaEngine {
     _wordHighlightCompletionSessionId = null;
     _wordHighlightPlaybackStatus.prepareForPlayback();
     final requestId = ++_rangeRequestId;
+    _activeRangeStart = start;
     _hasActiveRangeRequest = true;
     _activeRangeSessionId = rangeSessionId;
     AppLogger.log(
@@ -631,40 +677,88 @@ class MediaEngine extends _$MediaEngine {
         final handler = _handler;
         final backend = _backend;
         if (handler == null || backend == null) {
-          return (result: SentencePlaybackResult.cancelled, backend: backend);
+          return (
+            result: SentencePlaybackResult.cancelled,
+            backend: backend,
+            startWaiter: null,
+          );
         }
         if (!_isActiveRangeRequest(requestId)) {
-          return (result: SentencePlaybackResult.cancelled, backend: backend);
+          return (
+            result: SentencePlaybackResult.cancelled,
+            backend: backend,
+            startWaiter: null,
+          );
         }
+        _RangeStartWaiter? startWaiter;
         try {
           await handler.pauseBackend();
           if (!_isActiveRangeRequest(requestId)) {
-            return (result: SentencePlaybackResult.cancelled, backend: backend);
+            return (
+              result: SentencePlaybackResult.cancelled,
+              backend: backend,
+              startWaiter: null,
+            );
           }
           await handler.setSpeed(speed);
           if (!_isActiveRangeRequest(requestId)) {
-            return (result: SentencePlaybackResult.cancelled, backend: backend);
+            return (
+              result: SentencePlaybackResult.cancelled,
+              backend: backend,
+              startWaiter: null,
+            );
           }
+          // 先订阅位置流，再发 seek，确保不会漏掉 seek 后首个有效位置事件。
+          startWaiter = _awaitRangeStartPosition(
+            backend,
+            start,
+            end,
+            requestId,
+          );
           await handler.seek(start);
           if (!_isActiveRangeRequest(requestId)) {
-            return (result: SentencePlaybackResult.cancelled, backend: backend);
+            await startWaiter.cancel();
+            return (
+              result: SentencePlaybackResult.cancelled,
+              backend: backend,
+              startWaiter: null,
+            );
           }
-          return (result: SentencePlaybackResult.completed, backend: backend);
+          AppLogger.log(
+            'MediaEngine Range',
+            'seek-ack: id=$requestId targetStartMs=${start.inMilliseconds} '
+                'cachedPositionMs=${backend.position.inMilliseconds} '
+                'deltaMs=${backend.position.inMilliseconds - start.inMilliseconds} '
+                'sessionId=$rangeSessionId',
+          );
+          return (
+            result: SentencePlaybackResult.completed,
+            backend: backend,
+            startWaiter: startWaiter,
+          );
         } catch (error) {
+          await startWaiter?.cancel();
           AppLogger.log(
             'MediaEngine Range',
             'failed: id=$requestId setup-error=$error',
           );
           _invalidateRangeRequest('setup-failed');
-          return (result: SentencePlaybackResult.failed, backend: backend);
+          return (
+            result: SentencePlaybackResult.failed,
+            backend: backend,
+            startWaiter: null,
+          );
         }
       },
     );
 
     final backend = setupResult.backend;
+    final startWaiter = setupResult.startWaiter;
     if (setupResult.result != SentencePlaybackResult.completed ||
         backend == null ||
+        startWaiter == null ||
         !_isActiveRangeRequest(requestId)) {
+      await startWaiter?.cancel();
       return _rangeResultFor(requestId, setupResult.result);
     }
 
@@ -677,10 +771,8 @@ class MediaEngine extends _$MediaEngine {
           return SentencePlaybackResult.cancelled;
         }
         try {
-          // seek 已完成且请求仍有效，调用方此刻才能安全订阅位置流。
+          // 先让调用方订阅位置流；高亮等 seek 对应的新时间轴事件到达后再开启。
           onRangeReady?.call();
-          _wordHighlightCompletionSessionId = rangeSessionId;
-          _wordHighlightPlaybackStatus.markPlaying();
           await handler.playBackend();
           return _isActiveRangeRequest(requestId)
               ? SentencePlaybackResult.completed
@@ -701,10 +793,25 @@ class MediaEngine extends _$MediaEngine {
     );
     if (playResult != SentencePlaybackResult.completed) {
       await reached.cancel();
+      await startWaiter.cancel();
       return playResult;
     }
 
+    final startConfirmed = await Future.any<bool>([
+      startWaiter.started,
+      reached.future.then((_) => false),
+    ]);
+    if (startConfirmed && _isActiveRangeRequest(requestId)) {
+      await _enqueueRangeControl('range-position-ready-$requestId', () async {
+        if (_isActiveRangeRequest(requestId)) {
+          _wordHighlightCompletionSessionId = rangeSessionId;
+          _wordHighlightPlaybackStatus.markPlaying();
+        }
+      });
+    }
+
     final result = await reached.future;
+    await startWaiter.cancel();
     if (result == SentencePlaybackResult.completed) {
       await _enqueueRangeControl('range-finish-$requestId', () async {
         if (_isActiveRangeRequest(requestId)) {
@@ -746,6 +853,7 @@ class MediaEngine extends _$MediaEngine {
   void _completeRangeRequest(int requestId) {
     if (_isActiveRangeRequest(requestId)) {
       _hasActiveRangeRequest = false;
+      _activeRangeStart = null;
     }
   }
 
@@ -761,6 +869,7 @@ class MediaEngine extends _$MediaEngine {
     final previous = _rangeRequestId;
     _rangeRequestId += 1;
     _hasActiveRangeRequest = false;
+    _activeRangeStart = null;
     AppLogger.log(
       'MediaEngine Range',
       'cancel: previous=$previous current=$_rangeRequestId reason=$reason',
@@ -868,6 +977,70 @@ class MediaEngine extends _$MediaEngine {
     });
     return _RangeWaiter(completer.future, () async {
       await finish(SentencePlaybackResult.cancelled);
+    });
+  }
+
+  /// 以位置流确认 seek 起点已进入时间轴。
+  ///
+  /// media_kit 的 seek Future 只代表命令回执；其缓存位置可能仍是旧值。起点前的
+  /// 位置事件不能开启高亮。此观察器不阻塞播放，也不负责区间结束判断。
+  _RangeStartWaiter _awaitRangeStartPosition(
+    MediaPlayerBackend backend,
+    Duration start,
+    Duration end,
+    int requestId,
+  ) {
+    final started = Completer<bool>();
+    StreamSubscription<Duration>? posSub;
+    Timer? guard;
+    Future<void>? cleanupFuture;
+    var finished = false;
+    Future<void> cleanup() async {
+      final existing = cleanupFuture;
+      if (existing != null) {
+        await existing;
+        return;
+      }
+      final future = posSub?.cancel() ?? Future<void>.value();
+      cleanupFuture = future;
+      guard?.cancel();
+      await future;
+    }
+
+    void finish(bool result) {
+      if (finished) return;
+      finished = true;
+      if (!started.isCompleted) started.complete(result);
+      unawaited(cleanup());
+    }
+
+    posSub = backend.positionStream.listen((position) {
+      if (!_isActiveRangeRequest(requestId)) {
+        finish(false);
+      } else {
+        const startTolerance = Duration(milliseconds: 250);
+        final offsetFromStart = position - start;
+        if (position < end &&
+            offsetFromStart >= Duration.zero &&
+            offsetFromStart <= startTolerance) {
+          AppLogger.log(
+            'MediaEngine Range',
+            'position-ready: id=$requestId targetStartMs=${start.inMilliseconds} '
+                'positionMs=${position.inMilliseconds} '
+                'deltaMs=${offsetFromStart.inMilliseconds}',
+          );
+          finish(true);
+        }
+      }
+    });
+    guard = Timer.periodic(const Duration(milliseconds: 200), (_) {
+      if (!_isActiveRangeRequest(requestId)) {
+        finish(false);
+      }
+    });
+    return _RangeStartWaiter(started.future, () async {
+      finish(false);
+      await cleanup();
     });
   }
 
@@ -988,5 +1161,13 @@ class _RangeWaiter {
   const _RangeWaiter(this.future, this.cancel);
 
   final Future<SentencePlaybackResult> future;
+  final Future<void> Function() cancel;
+}
+
+/// 区间 seek 起点确认监听器，播放区间结束由 [_RangeWaiter] 独立管理。
+class _RangeStartWaiter {
+  const _RangeStartWaiter(this.started, this.cancel);
+
+  final Future<bool> started;
   final Future<void> Function() cancel;
 }

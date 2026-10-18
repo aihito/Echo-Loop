@@ -171,10 +171,19 @@ class _SentenceExplanationViewState
     final startMs = _sentenceStartMs;
     final endMs = _sentenceEndMs;
     if (source == null || startMs == null || endMs == null) return null;
+    final playingGroupIndex = _playingSenseGroupIndex;
+    final timings = _senseGroupTimings;
+    final activeRangeStartMs =
+        playingGroupIndex != null &&
+            timings != null &&
+            playingGroupIndex < timings.length
+        ? timings[playingGroupIndex].start.inMilliseconds
+        : null;
     return WordHighlightBinding(
       source: source,
       sentenceStartMs: startMs,
       sentenceEndMs: endMs,
+      activeRangeStartMs: activeRangeStartMs,
     );
   }
 
