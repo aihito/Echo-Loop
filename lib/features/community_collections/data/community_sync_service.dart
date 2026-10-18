@@ -476,6 +476,7 @@ class CommunitySyncService {
           name: Value(catalogEntry.name),
           description: Value(catalogEntry.description),
           coverUrl: Value(catalogEntry.coverUrl),
+          coverUrlChina: Value(catalogEntry.coverUrlChina),
           authorNickname: Value(catalogEntry.authorNickname),
           publishedAt: Value(catalogEntry.publishedAt),
           updatedAt: Value(catalogEntry.updatedAt),

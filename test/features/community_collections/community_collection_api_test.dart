@@ -28,6 +28,7 @@ class _ApiAdapter implements HttpClientAdapter {
             'name': 'Community English',
             'description': null,
             'coverUrl': 'https://cdn.example/cover.jpg',
+            'coverUrlChina': 'https://cn.example/cover.jpg',
             'authorNickname': 'Echo Studio',
             'fileCount': 1,
             'publishedAt': '2026-09-22T00:00:00.000Z',
@@ -42,6 +43,7 @@ class _ApiAdapter implements HttpClientAdapter {
           'name': 'Community English',
           'description': 'Fresh description',
           'coverUrl': 'https://cdn.example/cover.jpg',
+          'coverUrlChina': 'https://cn.example/cover.jpg',
           'authorNickname': 'Echo Studio',
           'fileCount': 1,
           'publishedAt': '2026-09-22T00:00:00.000Z',
@@ -59,6 +61,7 @@ class _ApiAdapter implements HttpClientAdapter {
             'publishedAt': '2026-09-21T00:00:00.000Z',
             'sortOrder': 0,
             'mediaUrl': 'https://cdn.example/file.m4a',
+            'mediaUrlChina': 'https://cn.example/file.m4a',
           },
         ],
         'nextCursor': null,
@@ -75,6 +78,7 @@ class _ApiAdapter implements HttpClientAdapter {
           'publishedAt': '2026-09-21T00:00:00.000Z',
           'sortOrder': 0,
           'mediaUrl': 'https://cdn.example/file.m4a',
+          'mediaUrlChina': 'https://cn.example/file.m4a',
         },
         'subtitle': {
           'sentences': [
@@ -114,6 +118,7 @@ void main() {
       expect(page.items.single.id, 'collection-1');
       expect(page.items.single.fileCount, 1);
       expect(page.items.single.authorNickname, 'Echo Studio');
+      expect(page.items.single.coverUrlChina, 'https://cn.example/cover.jpg');
       expect(page.items.single.updatedAt, DateTime.utc(2026, 9, 23));
       expect(adapter.requests.single.queryParameters, {'cursor': 'cursor-2'});
       expect(
@@ -138,7 +143,10 @@ void main() {
       expect(detail.collection.updatedAt, DateTime.utc(2026, 9, 23));
       expect(detail.items.single.mediaType.name, 'audio');
       expect(detail.items.single.difficulty?.name, 'b1');
+      expect(detail.items.single.mediaUrlChina, 'https://cn.example/file.m4a');
+      expect(detail.collection.coverUrlChina, 'https://cn.example/cover.jpg');
       expect(fileDetail.file.fileSizeBytes, 1234);
+      expect(fileDetail.file.mediaUrlChina, 'https://cn.example/file.m4a');
       expect(fileDetail.subtitle.sentences.single.endTime.inMilliseconds, 1250);
       expect(fileDetail.subtitle.words.single.word, 'Hello');
       expect(adapter.requests[0].uri.path, '/api/v2/collections/collection-1');

@@ -30,6 +30,7 @@ void main() {
       });
       expect(legacyCatalogEntry.authorNickname, isNull);
       expect(legacyCatalogEntry.updatedAt, legacyCatalogEntry.publishedAt);
+      expect(legacyCatalogEntry.coverUrlChina, isNull);
     },
   );
 
@@ -58,5 +59,41 @@ void main() {
     expect(subtitle.sentences.single.startTime.inMilliseconds, 1125);
     expect(subtitle.sentences.single.endTime.inMilliseconds, 2500);
     expect(subtitle.words.single.endTime.inMilliseconds, 1400);
+  });
+
+  test('中国镜像 URL 可解析并保存在社区目录缓存格式中', () {
+    final catalogEntry = PublicCollectionCatalogEntry.fromJson({
+      'id': 'collection-1',
+      'name': 'Community English',
+      'description': null,
+      'coverUrl': 'https://global.example/cover.jpg',
+      'coverUrlChina': 'https://china.example/cover.jpg',
+      'fileCount': 1,
+      'publishedAt': '2026-09-22T00:00:00.000Z',
+    });
+    final file = CommunityCollectionFile.fromJson({
+      'id': 'file-1',
+      'title': 'Lesson 1',
+      'description': null,
+      'mediaType': 'audio',
+      'durationSec': 42,
+      'fileSizeBytes': null,
+      'difficulty': null,
+      'publishedAt': null,
+      'sortOrder': 0,
+      'mediaUrl': 'https://global.example/file.m4a',
+      'mediaUrlChina': 'https://china.example/file.m4a',
+    });
+
+    expect(
+      PublicCollectionCatalogEntry.fromJson(
+        catalogEntry.toJson(),
+      ).coverUrlChina,
+      'https://china.example/cover.jpg',
+    );
+    expect(
+      CommunityCollectionFile.fromJson(file.toJson()).mediaUrlChina,
+      'https://china.example/file.m4a',
+    );
   });
 }

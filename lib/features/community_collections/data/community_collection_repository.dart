@@ -86,6 +86,7 @@ class CommunityCollectionRepository {
           source: const Value('community'),
           remoteId: Value(catalogEntry.id),
           coverUrl: Value(catalogEntry.coverUrl),
+          coverUrlChina: Value(catalogEntry.coverUrlChina),
           description: Value(catalogEntry.description),
           authorNickname: Value(catalogEntry.authorNickname),
           publishedAt: Value(catalogEntry.publishedAt),

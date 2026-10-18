@@ -9,6 +9,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../database/app_database.dart' as db;
 import '../../../database/providers.dart';
+import '../../../features/user_region/user_region_providers.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../models/word_timestamp.dart';
 import '../../../providers/audio_library_provider.dart';
@@ -23,6 +24,7 @@ import '../../../utils/srt_generator.dart';
 import '../../../utils/transcript_stats.dart';
 import '../data/community_collection_api.dart';
 import '../data/community_file_lifecycle.dart';
+import '../models/community_asset_url.dart';
 import '../models/community_collection_models.dart';
 import 'download_progress.dart';
 
@@ -171,6 +173,13 @@ class CommunityDownload extends _$CommunityDownload {
         throw CommunityFileUnavailable(remoteAudioId);
       }
       final file = detail.file;
+      final mediaUrl =
+          communityAssetUrlForRegion(
+            globalUrl: file.mediaUrl,
+            chinaUrl: file.mediaUrlChina,
+            isChinaUser: ref.read(isChinaUserProvider),
+          ) ??
+          file.mediaUrl;
       final subtitle = detail.subtitle;
       if (sessionId != _sessionId) return false;
       final database = ref.read(appDatabaseProvider);
@@ -190,7 +199,7 @@ class CommunityDownload extends _$CommunityDownload {
       await ref.read(collectionListProvider.notifier).loadCollections();
       final srt = _toSrt(subtitle);
       if (srt.isEmpty) throw CommunitySubtitleUnavailable(file.id);
-      final extension = _safeExtension(file.mediaUrl, file.mediaType);
+      final extension = _safeExtension(mediaUrl, file.mediaType);
       final tempDir = await getAppDataDirectory();
       tempFile = File(
         p.join(tempDir.path, 'tmp', 'community_media', '${item.id}.part'),
@@ -205,7 +214,7 @@ class CommunityDownload extends _$CommunityDownload {
       await ref
           .read(backgroundFileDownloadServiceProvider)
           .download(
-            uri: Uri.parse(file.mediaUrl),
+            uri: Uri.parse(mediaUrl),
             savePath: tempFile.path,
             // 通知展示社区合集标题，避免回退显示 `.part` 临时文件名。
             displayName: file.title,

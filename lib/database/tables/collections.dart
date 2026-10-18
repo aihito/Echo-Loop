@@ -36,6 +36,9 @@ class Collections extends Table {
   /// 社区合集封面图 URL；用户自建合集目前为 null。
   TextColumn get coverUrl => text().nullable()();
 
+  /// 已同步到中国 CDN 的社区合集封面图 URL。
+  TextColumn get coverUrlChina => text().nullable()();
+
   /// 社区合集描述；用户自建合集目前为 null。
   TextColumn get description => text().nullable()();
 

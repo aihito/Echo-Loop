@@ -13,6 +13,7 @@ import '../models/community_collection_models.dart';
 import '../models/community_collection_paging.dart';
 import '../community_collection_routes.dart';
 import '../data/trigger_community_catalog_refresh.dart';
+import '../../user_region/user_region_providers.dart';
 import '../providers/community_enrollment_provider.dart';
 import '../providers/discover_community_collections_provider.dart';
 import '../widgets/community_collection_card.dart';
@@ -91,6 +92,7 @@ class _DiscoverCommunityCollectionsScreenState
   ) {
     final items = page.items;
     final collectionState = ref.watch(collectionListProvider);
+    final isChinaUser = ref.watch(isChinaUserProvider);
     final enrolledRemoteIds = <String>{};
     for (final collection in collectionState.collections) {
       final remoteId = collection.remoteId;
@@ -132,6 +134,7 @@ class _DiscoverCommunityCollectionsScreenState
           final item = items[index - 1];
           return CommunityCollectionCard(
             item: item,
+            isChinaUser: isChinaUser,
             enrolled: enrolledRemoteIds.contains(item.id),
             enrolling: _enrolling.contains(item.id),
             onOpenDetail: () => context.push(

@@ -10,6 +10,7 @@ import 'package:echo_loop/features/community_collections/data/community_file_lif
 import 'package:echo_loop/features/community_collections/download/community_download_notifier.dart';
 import 'package:echo_loop/features/community_collections/download/download_progress.dart';
 import 'package:echo_loop/features/community_collections/models/community_collection_models.dart';
+import 'package:echo_loop/features/user_region/user_region_providers.dart';
 import 'package:echo_loop/providers/audio_library_provider.dart';
 import 'package:echo_loop/providers/collection_provider.dart';
 import 'package:echo_loop/providers/download_provider.dart';
@@ -54,6 +55,7 @@ class _AvailableFileApi extends CommunityCollectionApi {
         publishedAt: null,
         sortOrder: 0,
         mediaUrl: 'https://example.invalid/episode.mp3',
+        mediaUrlChina: 'https://cn.example/episode.mp3',
       ),
       subtitle: CommunitySubtitle(
         sentences: [
@@ -71,6 +73,7 @@ class _AvailableFileApi extends CommunityCollectionApi {
 
 class _FakeBackgroundDownloadRunner implements BackgroundDownloadRunner {
   String? enqueuedDisplayName;
+  Uri? enqueuedUri;
 
   @override
   Future<BackgroundDownloadResult> enqueue({
@@ -82,6 +85,7 @@ class _FakeBackgroundDownloadRunner implements BackgroundDownloadRunner {
     required CancelToken? cancelToken,
   }) async {
     enqueuedDisplayName = displayName;
+    enqueuedUri = uri;
     await File(savePath).parent.create(recursive: true);
     await File(savePath).writeAsBytes(const <int>[1, 2, 3]);
     onProgress?.call(3, null);
@@ -201,6 +205,7 @@ void main() {
       overrides: [
         appDatabaseProvider.overrideWithValue(database),
         communityCollectionApiProvider.overrideWithValue(_AvailableFileApi()),
+        isChinaUserProvider.overrideWithValue(true),
         backgroundFileDownloadServiceProvider.overrideWithValue(
           BackgroundFileDownloadService(runner: runner),
         ),
@@ -230,6 +235,7 @@ void main() {
     );
     expect(await notifier.awaitCompletion(), isTrue);
     expect(runner.enqueuedDisplayName, 'Episode');
+    expect(runner.enqueuedUri, Uri.parse('https://cn.example/episode.mp3'));
     final item = await database.audioItemDao.getById('audio-1');
     expect(item?.name, 'Episode');
     expect(item?.totalDuration, 12);

@@ -172,6 +172,7 @@ void main() {
           'source': 'official',
           'remoteId': 'r1',
           'coverUrl': 'https://cdn/x.png',
+          'coverUrlChina': 'https://cn.cdn/x.png',
           'description': 'desc',
           'deprecatedAt': now.toIso8601String(),
         };
@@ -179,8 +180,20 @@ void main() {
         expect(col.source, CollectionSource.community);
         expect(col.remoteId, 'r1');
         expect(col.coverUrl, 'https://cdn/x.png');
+        expect(col.coverUrlChina, 'https://cn.cdn/x.png');
         expect(col.description, 'desc');
         expect(col.deprecatedAt, now);
+      });
+
+      test('fromJson 忽略非字符串的中国封面 URL', () {
+        final col = Collection.fromJson({
+          'id': 'col-1',
+          'name': '旧合集',
+          'createdDate': now.toIso8601String(),
+          'coverUrlChina': 42,
+        });
+
+        expect(col.coverUrlChina, isNull);
       });
 
       test('fromJson 老数据无 source 字段默认 local', () {

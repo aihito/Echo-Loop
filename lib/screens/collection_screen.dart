@@ -7,9 +7,11 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../features/community_collections/models/community_asset_url.dart';
 import '../features/community_collections/providers/community_enrollment_provider.dart';
 import '../features/community_collections/widgets/community_badge.dart';
 import '../features/podcast/podcast_info_sheet.dart';
+import '../features/user_region/user_region_providers.dart';
 import '../models/collection.dart';
 import '../providers/collection_provider.dart';
 import '../l10n/app_localizations.dart';
@@ -545,6 +547,7 @@ class _CollectionListTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context)!;
     final collectionState = ref.watch(collectionListProvider);
+    final isChinaUser = ref.watch(isChinaUserProvider);
     final theme = Theme.of(context);
     final pinnedHighlightColor = theme.colorScheme.primary.withValues(
       alpha: 0.06,
@@ -566,7 +569,7 @@ class _CollectionListTile extends ConsumerWidget {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      _buildLeadingIcon(theme),
+                      _buildLeadingIcon(theme, isChinaUser),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
@@ -692,9 +695,15 @@ class _CollectionListTile extends ConsumerWidget {
   /// - 社区合集且有 coverUrl：网络封面图（BoxFit.contain）
   /// - Podcast 合集且有 coverUrl：网络封面图（BoxFit.cover）
   /// - 其它情况：渐变背景 + 合集名首字母或 Podcast 图标
-  Widget _buildLeadingIcon(ThemeData theme) {
+  Widget _buildLeadingIcon(ThemeData theme, bool isChinaUser) {
     const size = 56.0;
-    final coverUrl = collection.coverUrl;
+    final coverUrl = collection.isCommunity
+        ? communityAssetUrlForRegion(
+            globalUrl: collection.coverUrl,
+            chinaUrl: collection.coverUrlChina,
+            isChinaUser: isChinaUser,
+          )
+        : collection.coverUrl;
 
     // podcast 合集：有封面显示封面图，否则用 podcast 图标。
     final Widget icon;

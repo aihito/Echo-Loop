@@ -74,6 +74,66 @@ void main() {
 
   tearDown(() => directory.delete(recursive: true));
 
+  test('目录缓存保留社区合集封面和媒体的中国镜像 URL', () async {
+    final entry = PublicCollectionCatalogEntry(
+      id: 'collection-cn',
+      name: 'China mirrored collection',
+      description: null,
+      coverUrl: 'https://global.example/cover.jpg',
+      coverUrlChina: 'https://china.example/cover.jpg',
+      fileCount: 1,
+      publishedAt: DateTime(2026, 9, 23),
+    );
+    final file = CommunityCollectionFile(
+      id: 'file-cn',
+      title: 'Lesson',
+      description: null,
+      mediaType: CommunityMediaType.audio,
+      durationSec: 42,
+      fileSizeBytes: null,
+      difficulty: null,
+      publishedAt: null,
+      sortOrder: 0,
+      mediaUrl: 'https://global.example/file.m4a',
+      mediaUrlChina: 'https://china.example/file.m4a',
+    );
+    final api = _FakeCommunityApi(
+      collectionsResponse: (_) async =>
+          PublicCollectionPage(items: [entry], nextCursor: null),
+      filesResponse: (_) async => CommunityCollectionDetailPage(
+        collection: entry,
+        items: [file],
+        nextCursor: null,
+      ),
+    );
+    final writer = CommunityCollectionCatalogService(
+      api: api,
+      resolveDir: () async => directory,
+    );
+
+    await writer.refreshCollectionsPage(cursor: null, force: true);
+    await writer.refreshFilesPage('collection-cn', cursor: null, force: true);
+
+    final reader = CommunityCollectionCatalogService(
+      api: _FakeCommunityApi(),
+      resolveDir: () async => directory,
+    );
+    final collectionPage = await reader.loadCachedCollectionsPage(cursor: null);
+    final filePage = await reader.loadCachedFilesPage(
+      'collection-cn',
+      cursor: null,
+    );
+
+    expect(
+      collectionPage?.items.single.coverUrlChina,
+      'https://china.example/cover.jpg',
+    );
+    expect(
+      filePage?.items.single.mediaUrlChina,
+      'https://china.example/file.m4a',
+    );
+  });
+
   test('首次只请求一页，下一页显式加载并按页持久化', () async {
     final api = _FakeCommunityApi(
       collectionsResponse: (cursor) async => cursor == null

@@ -36,6 +36,7 @@ enum CollectionSource {
 /// 社区合集字段（source=community 时有效）：
 /// - [remoteId]：后端 collection.id（UUID）
 /// - [coverUrl] / [description]：后端 detail 返回的元信息
+/// - [coverUrlChina]：后端提供的中国 CDN 封面镜像地址
 /// - [deprecatedAt]：后端下架后的本地标记时间
 ///
 /// Podcast 合集字段（source=podcast 时有效）：
@@ -59,6 +60,9 @@ class Collection {
 
   /// 合集封面图；社区合集从后端获取；podcast 合集从 feed imageUrl 获取
   final String? coverUrl;
+
+  /// 社区合集封面图的中国 CDN 镜像地址。
+  final String? coverUrlChina;
 
   /// 合集描述；社区合集从后端获取；podcast 合集从 feed description 获取
   final String? description;
@@ -98,6 +102,7 @@ class Collection {
     this.source = CollectionSource.local,
     this.remoteId,
     this.coverUrl,
+    this.coverUrlChina,
     this.description,
     this.authorNickname,
     this.publishedAt,
@@ -130,6 +135,10 @@ class Collection {
     source: CollectionSource.fromString(json['source'] as String?),
     remoteId: json['remoteId'] as String?,
     coverUrl: json['coverUrl'] as String?,
+    coverUrlChina: switch (json['coverUrlChina']) {
+      final String url => url,
+      _ => null,
+    },
     description: json['description'] as String?,
     authorNickname: switch (json['authorNickname']) {
       final String nickname => nickname,
@@ -165,6 +174,7 @@ class Collection {
     CollectionSource? source,
     String? remoteId,
     String? coverUrl,
+    String? coverUrlChina,
     String? description,
     String? authorNickname,
     DateTime? publishedAt,
@@ -185,6 +195,7 @@ class Collection {
       source: source ?? this.source,
       remoteId: remoteId ?? this.remoteId,
       coverUrl: coverUrl ?? this.coverUrl,
+      coverUrlChina: coverUrlChina ?? this.coverUrlChina,
       description: description ?? this.description,
       authorNickname: authorNickname ?? this.authorNickname,
       publishedAt: publishedAt ?? this.publishedAt,

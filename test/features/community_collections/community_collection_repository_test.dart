@@ -24,6 +24,7 @@ class _FakeCommunityApi extends CommunityCollectionApi {
           name: 'Community English',
           description: 'A community collection.',
           coverUrl: null,
+          coverUrlChina: 'https://cn.example/cover.jpg',
           authorNickname: 'Echo Studio',
           fileCount: 0,
           publishedAt: DateTime(2026, 9, 22),
@@ -44,7 +45,8 @@ class _FakeCommunityApi extends CommunityCollectionApi {
         id: 'remote-1',
         name: 'Community English',
         description: 'A community collection.',
-        coverUrl: null,
+        coverUrl: 'https://global.example/cover.jpg',
+        coverUrlChina: 'https://cn.example/cover.jpg',
         authorNickname: 'Echo Studio',
         fileCount: 1,
         publishedAt: DateTime(2026, 9, 22),
@@ -100,6 +102,8 @@ void main() {
 
       expect(collection?.authorNickname, 'Echo Studio');
       expect(collection?.description, 'A community collection.');
+      expect(collection?.coverUrl, 'https://global.example/cover.jpg');
+      expect(collection?.coverUrlChina, 'https://cn.example/cover.jpg');
       expect(collection?.publishedAt, DateTime(2026, 9, 22));
       expect(collection?.updatedAt, DateTime(2026, 9, 23));
       expect(audio?.name, 'Episode 1');

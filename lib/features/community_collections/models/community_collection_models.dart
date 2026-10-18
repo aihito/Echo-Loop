@@ -6,6 +6,7 @@ class PublicCollectionCatalogEntry {
   final String name;
   final String? description;
   final String? coverUrl;
+  final String? coverUrlChina;
   final String? authorNickname;
   final int fileCount;
   final DateTime publishedAt;
@@ -16,6 +17,7 @@ class PublicCollectionCatalogEntry {
     required this.name,
     required this.description,
     required this.coverUrl,
+    this.coverUrlChina,
     this.authorNickname,
     required this.fileCount,
     required this.publishedAt,
@@ -28,6 +30,7 @@ class PublicCollectionCatalogEntry {
       name: _requiredString(json, 'name'),
       description: _nullableString(json, 'description'),
       coverUrl: _nullableString(json, 'coverUrl'),
+      coverUrlChina: _nullableString(json, 'coverUrlChina'),
       authorNickname: _nullableString(json, 'authorNickname'),
       fileCount: _requiredInt(json, 'fileCount'),
       publishedAt: _requiredDateTime(json, 'publishedAt'),
@@ -43,6 +46,7 @@ class PublicCollectionCatalogEntry {
     'name': name,
     'description': description,
     'coverUrl': coverUrl,
+    'coverUrlChina': coverUrlChina,
     'authorNickname': authorNickname,
     'fileCount': fileCount,
     'publishedAt': publishedAt.toIso8601String(),
@@ -99,6 +103,7 @@ class CommunityCollectionFile {
   final DateTime? publishedAt;
   final int sortOrder;
   final String mediaUrl;
+  final String? mediaUrlChina;
 
   const CommunityCollectionFile({
     required this.id,
@@ -111,6 +116,7 @@ class CommunityCollectionFile {
     required this.publishedAt,
     required this.sortOrder,
     required this.mediaUrl,
+    this.mediaUrlChina,
   });
 
   factory CommunityCollectionFile.fromJson(Map<String, Object?> json) {
@@ -125,6 +131,7 @@ class CommunityCollectionFile {
       publishedAt: _nullableDateTime(json, 'publishedAt'),
       sortOrder: _requiredInt(json, 'sortOrder'),
       mediaUrl: _requiredString(json, 'mediaUrl'),
+      mediaUrlChina: _nullableString(json, 'mediaUrlChina'),
     );
   }
 
@@ -148,6 +155,7 @@ class CommunityCollectionFile {
     'publishedAt': publishedAt?.toIso8601String(),
     'sortOrder': sortOrder,
     'mediaUrl': mediaUrl,
+    'mediaUrlChina': mediaUrlChina,
   };
 }
 

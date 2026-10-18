@@ -1954,6 +1954,17 @@ class $CollectionsTable extends Collections
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _coverUrlChinaMeta = const VerificationMeta(
+    'coverUrlChina',
+  );
+  @override
+  late final GeneratedColumn<String> coverUrlChina = GeneratedColumn<String>(
+    'cover_url_china',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _descriptionMeta = const VerificationMeta(
     'description',
   );
@@ -2065,6 +2076,7 @@ class $CollectionsTable extends Collections
     source,
     remoteId,
     coverUrl,
+    coverUrlChina,
     description,
     authorNickname,
     publishedAt,
@@ -2153,6 +2165,15 @@ class $CollectionsTable extends Collections
       context.handle(
         _coverUrlMeta,
         coverUrl.isAcceptableOrUnknown(data['cover_url']!, _coverUrlMeta),
+      );
+    }
+    if (data.containsKey('cover_url_china')) {
+      context.handle(
+        _coverUrlChinaMeta,
+        coverUrlChina.isAcceptableOrUnknown(
+          data['cover_url_china']!,
+          _coverUrlChinaMeta,
+        ),
       );
     }
     if (data.containsKey('description')) {
@@ -2285,6 +2306,10 @@ class $CollectionsTable extends Collections
         DriftSqlType.string,
         data['${effectivePrefix}cover_url'],
       ),
+      coverUrlChina: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}cover_url_china'],
+      ),
       description: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}description'],
@@ -2365,6 +2390,9 @@ class Collection extends DataClass implements Insertable<Collection> {
   /// 社区合集封面图 URL；用户自建合集目前为 null。
   final String? coverUrl;
 
+  /// 已同步到中国 CDN 的社区合集封面图 URL。
+  final String? coverUrlChina;
+
   /// 社区合集描述；用户自建合集目前为 null。
   final String? description;
 
@@ -2403,6 +2431,7 @@ class Collection extends DataClass implements Insertable<Collection> {
     required this.source,
     this.remoteId,
     this.coverUrl,
+    this.coverUrlChina,
     this.description,
     this.authorNickname,
     this.publishedAt,
@@ -2431,6 +2460,9 @@ class Collection extends DataClass implements Insertable<Collection> {
     }
     if (!nullToAbsent || coverUrl != null) {
       map['cover_url'] = Variable<String>(coverUrl);
+    }
+    if (!nullToAbsent || coverUrlChina != null) {
+      map['cover_url_china'] = Variable<String>(coverUrlChina);
     }
     if (!nullToAbsent || description != null) {
       map['description'] = Variable<String>(description);
@@ -2484,6 +2516,9 @@ class Collection extends DataClass implements Insertable<Collection> {
       coverUrl: coverUrl == null && nullToAbsent
           ? const Value.absent()
           : Value(coverUrl),
+      coverUrlChina: coverUrlChina == null && nullToAbsent
+          ? const Value.absent()
+          : Value(coverUrlChina),
       description: description == null && nullToAbsent
           ? const Value.absent()
           : Value(description),
@@ -2530,6 +2565,7 @@ class Collection extends DataClass implements Insertable<Collection> {
       source: serializer.fromJson<String>(json['source']),
       remoteId: serializer.fromJson<String?>(json['remoteId']),
       coverUrl: serializer.fromJson<String?>(json['coverUrl']),
+      coverUrlChina: serializer.fromJson<String?>(json['coverUrlChina']),
       description: serializer.fromJson<String?>(json['description']),
       authorNickname: serializer.fromJson<String?>(json['authorNickname']),
       publishedAt: serializer.fromJson<DateTime?>(json['publishedAt']),
@@ -2559,6 +2595,7 @@ class Collection extends DataClass implements Insertable<Collection> {
       'source': serializer.toJson<String>(source),
       'remoteId': serializer.toJson<String?>(remoteId),
       'coverUrl': serializer.toJson<String?>(coverUrl),
+      'coverUrlChina': serializer.toJson<String?>(coverUrlChina),
       'description': serializer.toJson<String?>(description),
       'authorNickname': serializer.toJson<String?>(authorNickname),
       'publishedAt': serializer.toJson<DateTime?>(publishedAt),
@@ -2586,6 +2623,7 @@ class Collection extends DataClass implements Insertable<Collection> {
     String? source,
     Value<String?> remoteId = const Value.absent(),
     Value<String?> coverUrl = const Value.absent(),
+    Value<String?> coverUrlChina = const Value.absent(),
     Value<String?> description = const Value.absent(),
     Value<String?> authorNickname = const Value.absent(),
     Value<DateTime?> publishedAt = const Value.absent(),
@@ -2606,6 +2644,9 @@ class Collection extends DataClass implements Insertable<Collection> {
     source: source ?? this.source,
     remoteId: remoteId.present ? remoteId.value : this.remoteId,
     coverUrl: coverUrl.present ? coverUrl.value : this.coverUrl,
+    coverUrlChina: coverUrlChina.present
+        ? coverUrlChina.value
+        : this.coverUrlChina,
     description: description.present ? description.value : this.description,
     authorNickname: authorNickname.present
         ? authorNickname.value
@@ -2644,6 +2685,9 @@ class Collection extends DataClass implements Insertable<Collection> {
       source: data.source.present ? data.source.value : this.source,
       remoteId: data.remoteId.present ? data.remoteId.value : this.remoteId,
       coverUrl: data.coverUrl.present ? data.coverUrl.value : this.coverUrl,
+      coverUrlChina: data.coverUrlChina.present
+          ? data.coverUrlChina.value
+          : this.coverUrlChina,
       description: data.description.present
           ? data.description.value
           : this.description,
@@ -2687,6 +2731,7 @@ class Collection extends DataClass implements Insertable<Collection> {
           ..write('source: $source, ')
           ..write('remoteId: $remoteId, ')
           ..write('coverUrl: $coverUrl, ')
+          ..write('coverUrlChina: $coverUrlChina, ')
           ..write('description: $description, ')
           ..write('authorNickname: $authorNickname, ')
           ..write('publishedAt: $publishedAt, ')
@@ -2712,6 +2757,7 @@ class Collection extends DataClass implements Insertable<Collection> {
     source,
     remoteId,
     coverUrl,
+    coverUrlChina,
     description,
     authorNickname,
     publishedAt,
@@ -2736,6 +2782,7 @@ class Collection extends DataClass implements Insertable<Collection> {
           other.source == this.source &&
           other.remoteId == this.remoteId &&
           other.coverUrl == this.coverUrl &&
+          other.coverUrlChina == this.coverUrlChina &&
           other.description == this.description &&
           other.authorNickname == this.authorNickname &&
           other.publishedAt == this.publishedAt &&
@@ -2758,6 +2805,7 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
   final Value<String> source;
   final Value<String?> remoteId;
   final Value<String?> coverUrl;
+  final Value<String?> coverUrlChina;
   final Value<String?> description;
   final Value<String?> authorNickname;
   final Value<DateTime?> publishedAt;
@@ -2779,6 +2827,7 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
     this.source = const Value.absent(),
     this.remoteId = const Value.absent(),
     this.coverUrl = const Value.absent(),
+    this.coverUrlChina = const Value.absent(),
     this.description = const Value.absent(),
     this.authorNickname = const Value.absent(),
     this.publishedAt = const Value.absent(),
@@ -2801,6 +2850,7 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
     this.source = const Value.absent(),
     this.remoteId = const Value.absent(),
     this.coverUrl = const Value.absent(),
+    this.coverUrlChina = const Value.absent(),
     this.description = const Value.absent(),
     this.authorNickname = const Value.absent(),
     this.publishedAt = const Value.absent(),
@@ -2826,6 +2876,7 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
     Expression<String>? source,
     Expression<String>? remoteId,
     Expression<String>? coverUrl,
+    Expression<String>? coverUrlChina,
     Expression<String>? description,
     Expression<String>? authorNickname,
     Expression<DateTime>? publishedAt,
@@ -2848,6 +2899,7 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
       if (source != null) 'source': source,
       if (remoteId != null) 'remote_id': remoteId,
       if (coverUrl != null) 'cover_url': coverUrl,
+      if (coverUrlChina != null) 'cover_url_china': coverUrlChina,
       if (description != null) 'description': description,
       if (authorNickname != null) 'author_nickname': authorNickname,
       if (publishedAt != null) 'published_at': publishedAt,
@@ -2874,6 +2926,7 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
     Value<String>? source,
     Value<String?>? remoteId,
     Value<String?>? coverUrl,
+    Value<String?>? coverUrlChina,
     Value<String?>? description,
     Value<String?>? authorNickname,
     Value<DateTime?>? publishedAt,
@@ -2896,6 +2949,7 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
       source: source ?? this.source,
       remoteId: remoteId ?? this.remoteId,
       coverUrl: coverUrl ?? this.coverUrl,
+      coverUrlChina: coverUrlChina ?? this.coverUrlChina,
       description: description ?? this.description,
       authorNickname: authorNickname ?? this.authorNickname,
       publishedAt: publishedAt ?? this.publishedAt,
@@ -2943,6 +2997,9 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
     }
     if (coverUrl.present) {
       map['cover_url'] = Variable<String>(coverUrl.value);
+    }
+    if (coverUrlChina.present) {
+      map['cover_url_china'] = Variable<String>(coverUrlChina.value);
     }
     if (description.present) {
       map['description'] = Variable<String>(description.value);
@@ -2994,6 +3051,7 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
           ..write('source: $source, ')
           ..write('remoteId: $remoteId, ')
           ..write('coverUrl: $coverUrl, ')
+          ..write('coverUrlChina: $coverUrlChina, ')
           ..write('description: $description, ')
           ..write('authorNickname: $authorNickname, ')
           ..write('publishedAt: $publishedAt, ')
@@ -16668,6 +16726,7 @@ typedef $$CollectionsTableCreateCompanionBuilder =
       Value<String> source,
       Value<String?> remoteId,
       Value<String?> coverUrl,
+      Value<String?> coverUrlChina,
       Value<String?> description,
       Value<String?> authorNickname,
       Value<DateTime?> publishedAt,
@@ -16691,6 +16750,7 @@ typedef $$CollectionsTableUpdateCompanionBuilder =
       Value<String> source,
       Value<String?> remoteId,
       Value<String?> coverUrl,
+      Value<String?> coverUrlChina,
       Value<String?> description,
       Value<String?> authorNickname,
       Value<DateTime?> publishedAt,
@@ -16792,6 +16852,11 @@ class $$CollectionsTableFilterComposer
 
   ColumnFilters<String> get coverUrl => $composableBuilder(
     column: $table.coverUrl,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get coverUrlChina => $composableBuilder(
+    column: $table.coverUrlChina,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -16925,6 +16990,11 @@ class $$CollectionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get coverUrlChina => $composableBuilder(
+    column: $table.coverUrlChina,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get description => $composableBuilder(
     column: $table.description,
     builder: (column) => ColumnOrderings(column),
@@ -17013,6 +17083,11 @@ class $$CollectionsTableAnnotationComposer
 
   GeneratedColumn<String> get coverUrl =>
       $composableBuilder(column: $table.coverUrl, builder: (column) => column);
+
+  GeneratedColumn<String> get coverUrlChina => $composableBuilder(
+    column: $table.coverUrlChina,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get description => $composableBuilder(
     column: $table.description,
@@ -17124,6 +17199,7 @@ class $$CollectionsTableTableManager
                 Value<String> source = const Value.absent(),
                 Value<String?> remoteId = const Value.absent(),
                 Value<String?> coverUrl = const Value.absent(),
+                Value<String?> coverUrlChina = const Value.absent(),
                 Value<String?> description = const Value.absent(),
                 Value<String?> authorNickname = const Value.absent(),
                 Value<DateTime?> publishedAt = const Value.absent(),
@@ -17145,6 +17221,7 @@ class $$CollectionsTableTableManager
                 source: source,
                 remoteId: remoteId,
                 coverUrl: coverUrl,
+                coverUrlChina: coverUrlChina,
                 description: description,
                 authorNickname: authorNickname,
                 publishedAt: publishedAt,
@@ -17168,6 +17245,7 @@ class $$CollectionsTableTableManager
                 Value<String> source = const Value.absent(),
                 Value<String?> remoteId = const Value.absent(),
                 Value<String?> coverUrl = const Value.absent(),
+                Value<String?> coverUrlChina = const Value.absent(),
                 Value<String?> description = const Value.absent(),
                 Value<String?> authorNickname = const Value.absent(),
                 Value<DateTime?> publishedAt = const Value.absent(),
@@ -17189,6 +17267,7 @@ class $$CollectionsTableTableManager
                 source: source,
                 remoteId: remoteId,
                 coverUrl: coverUrl,
+                coverUrlChina: coverUrlChina,
                 description: description,
                 authorNickname: authorNickname,
                 publishedAt: publishedAt,

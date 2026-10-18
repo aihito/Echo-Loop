@@ -5,6 +5,7 @@ import '../../../l10n/app_localizations.dart';
 import '../../../services/app_network_image_cache.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/common/collection_added_badge.dart';
+import '../models/community_asset_url.dart';
 import '../models/community_collection_models.dart';
 
 /// Discover 页的合集卡片。
@@ -16,6 +17,7 @@ import '../models/community_collection_models.dart';
 /// 数据源是 v2 的 [PublicCollectionCatalogEntry]，卡片只展示目录信息。
 class CommunityCollectionCard extends StatelessWidget {
   final PublicCollectionCatalogEntry item;
+  final bool isChinaUser;
 
   /// 是否已加入（由父层根据 `collectionListProvider` 判断）
   final bool enrolled;
@@ -29,6 +31,7 @@ class CommunityCollectionCard extends StatelessWidget {
   const CommunityCollectionCard({
     super.key,
     required this.item,
+    this.isChinaUser = false,
     required this.enrolled,
     required this.enrolling,
     required this.onOpenDetail,
@@ -109,7 +112,11 @@ class CommunityCollectionCard extends StatelessWidget {
   /// 无 URL 或加载失败 → 渐变 + 首字母占位
   Widget _buildCover(ThemeData theme) {
     const size = 56.0;
-    final coverUrl = item.coverUrl;
+    final coverUrl = communityAssetUrlForRegion(
+      globalUrl: item.coverUrl,
+      chinaUrl: item.coverUrlChina,
+      isChinaUser: isChinaUser,
+    );
     if (coverUrl == null || coverUrl.isEmpty) {
       return _coverPlaceholder(theme, size);
     }

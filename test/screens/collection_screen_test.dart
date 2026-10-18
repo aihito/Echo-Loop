@@ -1,6 +1,7 @@
 // LibraryScreen 测试（原 CollectionScreen）
 //
 // 测试资源库页面的合集视图渲染和交互。
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:echo_loop/models/collection.dart';
@@ -10,6 +11,7 @@ import 'package:echo_loop/providers/audio_library_provider.dart';
 import 'package:echo_loop/providers/collection_provider.dart';
 import 'package:echo_loop/providers/listening_practice/listening_practice_provider.dart';
 import 'package:echo_loop/providers/audio_engine/audio_engine_provider.dart';
+import 'package:echo_loop/features/user_region/user_region_providers.dart';
 
 import '../helpers/mock_providers.dart';
 import '../helpers/test_app.dart';
@@ -163,6 +165,37 @@ void main() {
         expect(find.textContaining('1 items'), findsOneWidget);
         expect(find.textContaining('Updated 5 minutes ago'), findsNWidgets(2));
         expect(find.textContaining('Added'), findsNothing);
+      });
+
+      testWidgets('中国地区本地合集列表使用已保存的中国封面 URL', (tester) async {
+        final community =
+            createTestCollection(
+              id: 'community-cn',
+              name: 'Community Lessons',
+            ).copyWith(
+              source: CollectionSource.community,
+              coverUrl: 'https://global.example/cover.jpg',
+              coverUrlChina: 'https://china.example/cover.jpg',
+            );
+
+        await tester.pumpWidget(
+          createTestScreen(
+            const LibraryScreen(),
+            overrides: [
+              isChinaUserProvider.overrideWithValue(true),
+              collectionListProvider.overrideWith(
+                () => TestCollectionList(
+                  CollectionState(rawCollections: [community]),
+                ),
+              ),
+            ],
+          ),
+        );
+
+        final cover = tester.widget<CachedNetworkImage>(
+          find.byType(CachedNetworkImage),
+        );
+        expect(cover.imageUrl, 'https://china.example/cover.jpg');
       });
 
       testWidgets('每个来源的用户合集都显示对应角标', (tester) async {

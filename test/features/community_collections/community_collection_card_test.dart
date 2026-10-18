@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:echo_loop/features/community_collections/models/community_collection_models.dart';
 import 'package:echo_loop/features/community_collections/widgets/community_collection_card.dart';
 import 'package:echo_loop/theme/app_theme.dart';
@@ -242,6 +243,38 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Start Practicing'), findsNothing);
+  });
+
+  testWidgets('中国地区的发现卡片使用可用的中国封面 URL', (tester) async {
+    final itemWithChinaCover = PublicCollectionCatalogEntry(
+      id: 'collection-cn',
+      name: 'Shared collection',
+      description: null,
+      coverUrl: 'https://global.example/cover.jpg',
+      coverUrlChina: 'https://china.example/cover.jpg',
+      fileCount: 1,
+      publishedAt: DateTime(2026, 1, 1),
+    );
+
+    await tester.pumpWidget(
+      createTestApp(
+        Scaffold(
+          body: CommunityCollectionCard(
+            item: itemWithChinaCover,
+            isChinaUser: true,
+            enrolled: false,
+            enrolling: false,
+            onOpenDetail: () {},
+            onEnroll: () {},
+          ),
+        ),
+      ),
+    );
+
+    final cover = tester.widget<CachedNetworkImage>(
+      find.byType(CachedNetworkImage),
+    );
+    expect(cover.imageUrl, 'https://china.example/cover.jpg');
   });
 }
 

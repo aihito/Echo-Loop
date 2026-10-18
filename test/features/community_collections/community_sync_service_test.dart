@@ -189,6 +189,7 @@ void main() {
           'remote-1',
           'One',
           authorNickname: 'Echo Studio',
+          coverUrlChina: 'https://cn.example/cover.jpg',
           updatedAt: DateTime(2026, 2, 1),
         ),
       ],
@@ -204,6 +205,7 @@ void main() {
       database.collections,
     )..where((row) => row.id.equals('local-1'))).getSingle();
     expect(collection.authorNickname, 'Echo Studio');
+    expect(collection.coverUrlChina, 'https://cn.example/cover.jpg');
     expect(collection.publishedAt, DateTime(2026, 1, 1));
     expect(collection.updatedAt, DateTime(2026, 2, 1));
   });
@@ -427,6 +429,7 @@ PublicCollectionCatalogEntry _catalogEntry(
   String id,
   String name, {
   String? authorNickname,
+  String? coverUrlChina,
   DateTime? updatedAt,
 }) {
   return PublicCollectionCatalogEntry(
@@ -434,6 +437,7 @@ PublicCollectionCatalogEntry _catalogEntry(
     name: name,
     description: null,
     coverUrl: null,
+    coverUrlChina: coverUrlChina,
     authorNickname: authorNickname,
     fileCount: 1,
     publishedAt: DateTime(2026, 1, 1),
