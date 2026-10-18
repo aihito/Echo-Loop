@@ -4,6 +4,7 @@
 
 ## 本次完成
 
+- [x] 修复逐句播放中调整速度未即时生效（2026-10-18）：`MediaSentencePlaybackDriver.setSpeed` 更新保存速度的同时调用 MediaEngine，使当前播放立即采用新速度，后续句子继续沿用该速度。新增回归测试覆盖播放中变速和下一句速度继承。`test/providers/media_engine/media_engine_provider_test.dart` 25 项通过，两个相关 Dart 文件定向分析无问题，格式与 `git diff --check` 通过。未运行 `scripts/check.sh`：改动局限于播放速度驱动与对应回归测试，已完成定向验证。
 - [x] 社区合集按地区使用中国镜像 URL（2026-10-18）：App 解析并缓存 API 返回的 `coverUrlChina` / `mediaUrlChina`；中国用户在镜像 URL 可用时使用中国地址，否则使用全球地址，其他地区继续使用全球地址。已加入合集持久化中国封面 URL，数据库升级至 v59；媒体下载按地区选地址，失败时不跨区重试。社区合集 API、DTO、缓存、封面、下载、同步和 v58→v59 迁移相关测试通过（首次 71 项；后续 UI 回归 40 项），23 个相关 Dart 文件定向分析通过，`git diff --check` 通过。未运行 `scripts/check.sh`：改动局限于社区合集 URL 与封面数据链路，定向测试和分析已覆盖。未运行 Maestro：当前环境 `adb` server 启动被 `Operation not permitted` 阻止；现有 Flow 会清理 App 状态。**完成时间**: 2026-10-18
   - 审查修复（2026-10-18）：SharedPreferences 迁移解析 `coverUrlChina` 改用字符串模式匹配，畸形非字符串值安全回退为 null；新增回归测试。`test/models/collection_test.dart` 16 项通过，相关 Dart 分析无问题。
 - [x] 修复随心听全文列表点击后句首首词重复高亮（2026-10-18）：日志确认 iOS seek 后位置会短暂回退，导致首词索引 `0 → null → 0`，另一次回退让焦点从目标句切到前一句再切回。句首前 250ms 内的位置回退按句首解析，并在同一窗口保持目标句焦点；更早的陈旧位置不会提前高亮。热重启后的日志中，点选句子后首词连续进入后续词，没有再次出现上述高亮或焦点跳转；用户确认表现正常。相关回归测试和定向分析通过。**完成时间**: 2026-10-18

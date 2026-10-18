@@ -633,6 +633,47 @@ void main() {
     expect(backend.stopKeepAliveCalls, 1);
   });
 
+  test('MediaSentencePlaybackDriver在播放中即时更新并保留新速度', () async {
+    final engine = container.read(mediaEngineProvider.notifier);
+    await engine.loadMedia(item(), 1.0);
+    final driver = MediaSentencePlaybackDriver(engine);
+    final playbackSessionId = driver.newSession();
+
+    final firstPlayback = driver.playSentence(
+      Sentence(
+        index: 0,
+        text: 'first sentence',
+        startTime: const Duration(seconds: 1),
+        endTime: const Duration(seconds: 3),
+      ),
+      playbackSessionId,
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(backend.playing, isTrue);
+    expect(backend.rate, 1.0);
+
+    await driver.setSpeed(1.5);
+    expect(backend.rate, 1.5);
+
+    backend.emitPosition(const Duration(seconds: 3));
+    expect(await firstPlayback, SentencePlaybackResult.completed);
+
+    final secondPlayback = driver.playSentence(
+      Sentence(
+        index: 1,
+        text: 'second sentence',
+        startTime: const Duration(seconds: 3),
+        endTime: const Duration(seconds: 5),
+      ),
+      playbackSessionId,
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(backend.rateCalls.last, 1.5);
+
+    backend.emitPosition(const Duration(seconds: 5));
+    expect(await secondPlayback, SentencePlaybackResult.completed);
+  });
+
   test('ProviderContainer dispose 时释放 backend，避免热重启残留 native 链路', () async {
     final engine = container.read(mediaEngineProvider.notifier);
     await engine.loadMedia(item(), 1.0);

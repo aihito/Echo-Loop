@@ -135,9 +135,11 @@ class MediaSentencePlaybackDriver implements IntensiveListenPlaybackDriver {
   Future<void> pause() =>
       _mediaEngine.cancelActiveRange(reason: 'driver-pause');
 
+  /// 更新当前播放器速度，并保留该值供后续句子和区间播放使用。
   @override
   Future<void> setSpeed(double speed) async {
     _playbackSpeed = speed;
+    await _mediaEngine.setSpeed(speed);
   }
 
   @override
