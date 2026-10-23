@@ -228,6 +228,9 @@ RSS 里指向音频文件的标签（真正的 mp3/m4a 地址）。没有 enclos
 
 ## 工程与 Flutter（读代码常碰到）
 
+### async / await / Future / 事件循环
+Dart 的异步模型：主 isolate 单线程 + 事件循环调度；`await` 挂起当前函数，Future 完成后从断点继续。不是 Kotlin 协程。心智模型见 [dart-async-event-loop.md](./dart-async-event-loop.md)。
+
 ### Provider / Riverpod
 状态管理：UI 读「当前状态」，通过 Notifier 改状态。本仓库用 Riverpod（常带代码生成 `.g.dart`）。
 

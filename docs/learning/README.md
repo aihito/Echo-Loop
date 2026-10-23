@@ -1,7 +1,7 @@
 # Echo Loop 学习资料索引
 
 > 面向想读懂本仓库的开发者。按阶段学，先跑通再深入。  
-> 最后更新：2026-10-16
+> 最后更新：2026-10-23
 
 本目录只做**学习地图**：不重复粘贴长文，而是把仓库里已有文档、代码入口按阅读顺序串起来。
 
@@ -57,6 +57,10 @@
 
 按主题分组（网络、流式协议、登录订阅、音频、播客、Flutter 工程），用白话解释；不必一次读完，随查即可。
 
+读 `await` / `Future` / 事件循环（为何不是 Kotlin 协程、队列怎么跑）见：
+
+**[dart-async-event-loop.md](./dart-async-event-loop.md)**
+
 ---
 
 ## 2. 工程约定
@@ -100,6 +104,11 @@ Model = 业务数据；State = 界面运行态
 | `lib/router/main_shell.dart` | `MainShell`：底栏 / 侧栏 + Tab 内容 |
 | `lib/router/widgets/main_shell_navigation_rail.dart` | 桌面 `NavigationRail`（宽屏侧栏） |
 | `lib/providers/startup_bootstrap_provider.dart` | 冷启动本地数据初始化 |
+| `lib/widgets/app_startup_gate.dart` | 本地数据 ∥ 地区未就绪时挡业务路由 |
+
+**启动与数据加载全流程**（main → Gate → 第三方 → MainShell 预热、优先级与降级）：
+
+**[startup-data-loading.md](./startup-data-loading.md)**
 
 ### 必懂概念（路由）
 
