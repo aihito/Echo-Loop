@@ -57,9 +57,9 @@
 
 按主题分组（网络、流式协议、登录订阅、音频、播客、Flutter 工程），用白话解释；不必一次读完，随查即可。
 
-读 `await` / `Future` / 事件循环（为何不是 Kotlin 协程、队列怎么跑）见：
+读 `await` / `Future` / 事件循环（异步任务完整执行流程、队列、为何不是 Kotlin 协程）见：
 
-**[dart-async-event-loop.md](./dart-async-event-loop.md)**
+**[dart-async-event-loop.md](./dart-async-event-loop.md)**（重点先看 §3）
 
 ---
 
